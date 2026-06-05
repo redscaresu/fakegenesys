@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed / Fixed (S113)
+- **Restore tmpPath leak on copyFile failure**: all error paths in `repository.Restore` now `os.Remove(tmpPath)` to avoid leaving stale staging files on disk.
+- **Restore corruption on Rename failure**: snapshot the pre-Restore bytes into memory BEFORE closing the existing handle; on rename failure, write the snapshot back and reopen so the repo rolls back to the pre-Restore state instead of leaving a dead `r.db`.
+- **`requireQueueExists` / `requireDatatableExists` / datatable row update existence check** now branch on `sql.ErrNoRows`: real DB errors no longer masquerade as 404. (Same fix pass 1 applied to `flow.flowAction`; pass 2 caught the 3 sibling locations.)
+- **Callers updated** (7 call sites across `routing_queue.go` + `architect_datatable.go`) to differentiate ErrNotFound → 404 from other errors → 500.
+- **Pass-3 sanity check folded in-slice** — no new substantive findings; review loop closed per the anti-nitpick rule (two consecutive no-substantive passes).
+
 ### Changed / Fixed (S112)
 - **Restore corruption guard**: `repository.Restore` now stages the snapshot at `<dbPath>.restore-tmp` and opens + verifies before closing the existing handle. On any error path the old DB stays usable instead of leaving a dead handle (full archive in `docs/review-passes/pass1.md` finding #1).
 - **spec_cross_reference test rewritten**: walks the live chi route tree via `chi.Walk` and asserts every `/api/v2/...` route exists in `specs/genesys-openapi.json`. Caught and removed an unspec'd `PATCH /flows/datatables/{id}` route immediately.

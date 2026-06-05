@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -158,7 +159,11 @@ type queueMember struct {
 func (app *Application) handleRoutingQueueMembersAdd(w http.ResponseWriter, r *http.Request) {
 	queueID := chi.URLParam(r, "queueId")
 	if err := app.requireQueueExists(queueID); err != nil {
-		writeNotFound(w, "routing_queue")
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "routing_queue")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
 	var members []queueMember
@@ -206,7 +211,11 @@ func (app *Application) handleRoutingQueueMembersAdd(w http.ResponseWriter, r *h
 func (app *Application) handleRoutingQueueMembersReplace(w http.ResponseWriter, r *http.Request) {
 	queueID := chi.URLParam(r, "queueId")
 	if err := app.requireQueueExists(queueID); err != nil {
-		writeNotFound(w, "routing_queue")
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "routing_queue")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
 	var members []queueMember
@@ -251,7 +260,11 @@ func (app *Application) handleRoutingQueueMembersReplace(w http.ResponseWriter, 
 func (app *Application) handleRoutingQueueMembersList(w http.ResponseWriter, r *http.Request) {
 	queueID := chi.URLParam(r, "queueId")
 	if err := app.requireQueueExists(queueID); err != nil {
-		writeNotFound(w, "routing_queue")
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "routing_queue")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
 	rows, err := app.repo.DB().Query(
@@ -284,12 +297,17 @@ func (app *Application) handleRoutingQueueMembersList(w http.ResponseWriter, r *
 }
 
 // requireQueueExists returns models.ErrNotFound if the queue is not
-// present. Used by member sub-resource handlers.
+// present, or the underlying DB error for any other failure. S113
+// pass-2 finding #3 fixed the prior all-errors-as-404 behavior that
+// matched the pattern pass 1 already removed from flow.flowAction.
 func (app *Application) requireQueueExists(queueID string) error {
 	var dummy string
 	row := app.repo.DB().QueryRow(`SELECT id FROM routing_queues WHERE id = ?`, queueID)
 	if err := row.Scan(&dummy); err != nil {
-		return models.ErrNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.ErrNotFound
+		}
+		return err
 	}
 	return nil
 }

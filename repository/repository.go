@@ -158,13 +158,13 @@ func (r *Repository) Restore() error {
 		}
 		return fmt.Errorf("stat snapshot: %w", err)
 	}
-	// Restore-corruption guard (S112 finding #1): keep the existing
-	// handle alive until the new one is open. If copyFile OR openDB
-	// fails, the repository continues with its old DB handle rather
-	// than leaving a closed handle and silent SQLite errors on every
-	// subsequent call.
+	// Restore-corruption guard (S112 finding #1 + S113 pass-2
+	// findings #1/#2): keep the existing handle alive until the new
+	// one is open AND the rename succeeds. Every error path cleans
+	// up tmpPath to avoid leaving stale files on disk.
 	tmpPath := r.dbPath + ".restore-tmp"
 	if err := copyFile(snapPath, tmpPath); err != nil {
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("copy snapshot to staging: %w", err)
 	}
 	newDB, err := openDB(tmpPath)
@@ -172,18 +172,33 @@ func (r *Repository) Restore() error {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("open snapshot staging: %w", err)
 	}
-	// Both succeeded — atomically swap.
+	// Close the staging handle now — the rename is metadata-only on
+	// the same filesystem and doesn't need an open file descriptor.
+	// Holding it open across the rename has no benefit and complicates
+	// the cleanup paths below.
+	_ = newDB.Close()
+	// Snapshot the existing dbPath bytes so we can restore on failure
+	// instead of leaving the repo with a closed handle.
+	oldBytes, readErr := os.ReadFile(r.dbPath)
 	if err := r.db.Close(); err != nil {
-		_ = newDB.Close()
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("close existing db: %w", err)
 	}
 	if err := os.Rename(tmpPath, r.dbPath); err != nil {
-		_ = newDB.Close()
+		_ = os.Remove(tmpPath)
+		// Best-effort recovery: write the snapshot of the pre-Restore
+		// bytes back, reopen, and surface the rename error to caller.
+		// If we never got the snapshot (readErr != nil) we still try
+		// to reopen the existing file in case Rename's failure left
+		// it intact.
+		if readErr == nil {
+			_ = os.WriteFile(r.dbPath, oldBytes, 0o600)
+		}
+		if reopened, reopenErr := openDB(r.dbPath); reopenErr == nil {
+			r.db = reopened
+		}
 		return fmt.Errorf("swap snapshot into place: %w", err)
 	}
-	// Reopen at the canonical path so dbPath consistency holds.
-	_ = newDB.Close()
 	db, err := openDB(r.dbPath)
 	if err != nil {
 		return fmt.Errorf("reopen db at canonical path: %w", err)
