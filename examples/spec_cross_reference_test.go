@@ -13,29 +13,37 @@ package examples_test
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/redscaresu/fakegenesys/handlers"
 )
 
-// ImplementedRoutes is populated by per-resource handler files via a
-// package-level init. S109/S110/S111 each append their endpoints. The
-// list is single-package coupled so adding a new endpoint without
-// touching the spec or the cross-reference is impossible.
+// TestSpecCrossReference walks the live chi route tree on a fresh
+// fakegenesys Application and asserts every implemented `/api/v2/...`
+// route exists in `specs/genesys-openapi.json`.
 //
-// In S108 it's empty (no resource handlers landed yet). The smoke
-// harness validates handler behavior end-to-end; this test catches the
-// narrower "wire shape drifts from the spec" failure mode.
-var ImplementedRoutes = []string{}
-
+// S112 finding #2 fixed the earlier silent-no-op: before this slice
+// the test relied on a package-level `ImplementedRoutes` that nothing
+// populated. Walking the router via chi.Walk means every PR that adds
+// a route is automatically gated against the spec without per-handler
+// registration glue.
+//
+// `/api/v2/flows/actions/*` action endpoints are excluded from the
+// strict-match because Genesys exposes them as POST handlers that take
+// the resource id as a query param — the spec entries don't have a
+// distinct path per action verb in some Genesys versions. The check
+// still surfaces every CRUD route.
 func TestSpecCrossReference(t *testing.T) {
 	root := repoRoot(t)
 	specPath := filepath.Join(root, "specs", "genesys-openapi.json")
 	raw, err := os.ReadFile(specPath)
 	if err != nil {
-		// Spec not yet downloaded — skip with a clear message rather
-		// than failing.
 		t.Skipf("spec not present at %s: %v (run `make specs-refresh`)", specPath, err)
 	}
 	var doc struct {
@@ -47,30 +55,44 @@ func TestSpecCrossReference(t *testing.T) {
 	if len(doc.Paths) == 0 {
 		t.Fatalf("spec has no paths — file may be malformed")
 	}
-	if len(ImplementedRoutes) == 0 {
-		t.Log("ImplementedRoutes empty — no resource handlers landed yet (S108 baseline)")
-		return
+
+	app, err := handlers.NewApplication(":memory:", false)
+	if err != nil {
+		t.Fatalf("NewApplication: %v", err)
 	}
+	defer app.Close()
+
 	missing := []string{}
-	for _, r := range ImplementedRoutes {
-		// route format: "METHOD /api/v2/path[/{id}]"
-		parts := strings.SplitN(r, " ", 2)
-		if len(parts) != 2 {
-			t.Errorf("malformed route entry %q", r)
-			continue
+	checked := 0
+	err = chi.Walk(app.Router().(chi.Routes), func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if !strings.HasPrefix(route, "/api/v2/") {
+			return nil
 		}
-		method := strings.ToLower(parts[0])
-		path := parts[1]
-		ops, ok := doc.Paths[path]
+		// Skip the wildcard catch-all that exists only to anchor the
+		// bearer middleware (`/api/v2/*` from RegisterRoutes).
+		if strings.HasSuffix(route, "/*") {
+			return nil
+		}
+		ops, ok := doc.Paths[route]
 		if !ok {
-			missing = append(missing, r)
-			continue
+			missing = append(missing, method+" "+route)
+			return nil
 		}
-		if _, ok := ops[method]; !ok {
-			missing = append(missing, r)
+		if _, ok := ops[strings.ToLower(method)]; !ok {
+			missing = append(missing, method+" "+route)
 		}
+		checked++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("chi.Walk: %v", err)
+	}
+	if checked == 0 {
+		t.Fatalf("walked 0 /api/v2 routes — the test is non-functional")
 	}
 	if len(missing) > 0 {
-		t.Errorf("implemented routes missing from spec:\n  %s", strings.Join(missing, "\n  "))
+		t.Errorf("%d implemented routes missing from spec:\n  %s",
+			len(missing), strings.Join(missing, "\n  "))
 	}
+	t.Logf("spec cross-reference: %d routes checked", checked)
 }

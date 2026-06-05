@@ -137,6 +137,33 @@ func TestFlow_LifecycleAndStateMachine(t *testing.T) {
 		t.Fatalf("after checkout state = %v, want locked", locked["state"])
 	}
 
+	// S112 finding #10a: checkin → unpublished + cleared lock.
+	resp = ts.PostJSON(t, "/api/v2/flows/actions/checkin?flow="+id, nil, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("checkin: status %d", resp.StatusCode)
+	}
+	var checkedIn map[string]any
+	ts.GetJSON(t, "/api/v2/flows/"+id, &checkedIn)
+	if checkedIn["state"] != "unpublished" {
+		t.Fatalf("after checkin state = %v, want unpublished", checkedIn["state"])
+	}
+	if v, ok := checkedIn["lockedUser"]; ok && v != nil {
+		t.Fatalf("after checkin lockedUser should be nil, got %v", v)
+	}
+
+	// Re-lock, then force-unlock.
+	ts.PostJSON(t, "/api/v2/flows/actions/checkout?flow="+id, nil, nil)
+	// S112 finding #10b: unlock from locked → unpublished + cleared lock.
+	resp = ts.PostJSON(t, "/api/v2/flows/actions/unlock?flow="+id, nil, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unlock: status %d", resp.StatusCode)
+	}
+	var unlocked map[string]any
+	ts.GetJSON(t, "/api/v2/flows/"+id, &unlocked)
+	if unlocked["state"] != "unpublished" {
+		t.Fatalf("after unlock state = %v, want unpublished", unlocked["state"])
+	}
+
 	// publish → published + cleared lock
 	resp = ts.PostJSON(t, "/api/v2/flows/actions/publish?flow="+id, nil, nil)
 	if resp.StatusCode != http.StatusOK {
@@ -151,10 +178,49 @@ func TestFlow_LifecycleAndStateMachine(t *testing.T) {
 		t.Fatalf("after publish lockedUser should be nil, got %v", v)
 	}
 
+	// S112 finding #9: PUT must NOT bypass the state machine.
+	resp = ts.PutJSON(t, "/api/v2/flows/"+id,
+		map[string]any{"name": "main-ivr", "state": "unpublished"}, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("put bypass attempt: status %d", resp.StatusCode)
+	}
+	var afterBypass map[string]any
+	ts.GetJSON(t, "/api/v2/flows/"+id, &afterBypass)
+	if afterBypass["state"] != "published" {
+		t.Fatalf("PUT bypassed state machine: state = %v, want still published",
+			afterBypass["state"])
+	}
+
 	// delete
 	resp = ts.DeleteJSON(t, "/api/v2/flows/"+id)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: status %d", resp.StatusCode)
+	}
+}
+
+// S112 finding #11: empty multipart upload should 400.
+func TestFlow_MultipartUploadEmpty400(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+	var created map[string]any
+	ts.PostJSON(t, "/api/v2/flows",
+		map[string]any{"name": "empty-multipart-ivr"}, &created)
+	id := created["id"].(string)
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("metadata", "no-file-here")
+	_ = mw.Close()
+
+	req, _ := http.NewRequest(http.MethodPut, ts.HTTP.URL+"/api/v2/flows/"+id, &buf)
+	req.Header.Set("Authorization", "Bearer "+ts.Token)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := ts.HTTP.Client().Do(req)
+	if err != nil {
+		t.Fatalf("put empty multipart: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (multipart with no file part)", resp.StatusCode)
 	}
 }
 

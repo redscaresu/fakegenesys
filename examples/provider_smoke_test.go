@@ -161,11 +161,38 @@ func runWorkingExample(t *testing.T, dir, tree string, broken brokenIndex, _, _ 
 	tofuApply(t, dir, nil)
 	key := tree + "/" + filepath.Base(dir)
 	if _, isBroken := broken[key]; isBroken {
-		t.Logf("known_broken: %s — skipping plan-no-op drift assertion", key)
+		// S112 finding #3: ratchet-only-tightens. If a known-broken
+		// dir now passes plan-no-op, fail — the entry can be removed.
+		if tofuPlanIsNoOp(t, dir, nil) {
+			t.Fatalf("known_broken entry %q now passes idempotency — "+
+				"congratulations, remove this entry from examples/known_broken.yaml", key)
+		}
+		t.Logf("known_broken: %s — drift expected, skipping strict assertion", key)
 	} else {
 		tofuPlanNoOp(t, dir, nil)
 	}
 	tofuDestroy(t, dir, nil)
+}
+
+// tofuPlanIsNoOp reports whether `tofu plan -detailed-exitcode` exits
+// 0 (no diff). Used by the known_broken ratchet so a flapping → clean
+// dir surfaces immediately.
+func tofuPlanIsNoOp(t *testing.T, dir string, extraArgs []string) bool {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), commandBudget)
+	defer cancel()
+	args := append([]string{"plan", "-detailed-exitcode", "-input=false"}, extraArgs...)
+	cmd := exec.CommandContext(ctx, "tofu", args...)
+	cmd.Dir = dir
+	err := cmd.Run()
+	if err == nil {
+		return true
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode() == 0
+	}
+	return false
 }
 
 func runMisconfiguredExample(t *testing.T, dir, _ string, _ brokenIndex, _, _ string) {

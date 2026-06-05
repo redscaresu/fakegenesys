@@ -166,6 +166,23 @@ func (app *Application) handleRoutingQueueMembersAdd(w http.ResponseWriter, r *h
 		writeBadRequest(w, "body: "+err.Error())
 		return
 	}
+	// S112 finding #5: ?delete=true flips POST from add to remove
+	// (Genesys bulk add-or-delete endpoint).
+	if r.URL.Query().Get("delete") == "true" {
+		for _, m := range members {
+			if m.ID == "" {
+				continue
+			}
+			if _, err := app.repo.DB().Exec(
+				`DELETE FROM routing_queue_members WHERE queue_id = ? AND user_id = ?`,
+				queueID, m.ID); err != nil {
+				writeError(w, http.StatusInternalServerError, "internal", err.Error())
+				return
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	for _, m := range members {
 		if m.ID == "" {
 			continue

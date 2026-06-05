@@ -158,15 +158,35 @@ func (r *Repository) Restore() error {
 		}
 		return fmt.Errorf("stat snapshot: %w", err)
 	}
+	// Restore-corruption guard (S112 finding #1): keep the existing
+	// handle alive until the new one is open. If copyFile OR openDB
+	// fails, the repository continues with its old DB handle rather
+	// than leaving a closed handle and silent SQLite errors on every
+	// subsequent call.
+	tmpPath := r.dbPath + ".restore-tmp"
+	if err := copyFile(snapPath, tmpPath); err != nil {
+		return fmt.Errorf("copy snapshot to staging: %w", err)
+	}
+	newDB, err := openDB(tmpPath)
+	if err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("open snapshot staging: %w", err)
+	}
+	// Both succeeded — atomically swap.
 	if err := r.db.Close(); err != nil {
-		return fmt.Errorf("close db: %w", err)
+		_ = newDB.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("close existing db: %w", err)
 	}
-	if err := copyFile(snapPath, r.dbPath); err != nil {
-		return fmt.Errorf("copy snapshot: %w", err)
+	if err := os.Rename(tmpPath, r.dbPath); err != nil {
+		_ = newDB.Close()
+		return fmt.Errorf("swap snapshot into place: %w", err)
 	}
+	// Reopen at the canonical path so dbPath consistency holds.
+	_ = newDB.Close()
 	db, err := openDB(r.dbPath)
 	if err != nil {
-		return fmt.Errorf("reopen db: %w", err)
+		return fmt.Errorf("reopen db at canonical path: %w", err)
 	}
 	r.db = db
 	r.cachesMu.Lock()
@@ -296,6 +316,8 @@ func (r *Repository) migrate() error {
 			body TEXT NOT NULL,
 			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// S112 finding #8: user_id also carries an FK to users(id)
+		// with CASCADE so deleting a user purges their memberships.
 		`CREATE TABLE IF NOT EXISTS routing_queue_members (
 			queue_id TEXT NOT NULL,
 			user_id TEXT NOT NULL,
@@ -303,7 +325,8 @@ func (r *Repository) migrate() error {
 			joined INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (queue_id, user_id),
-			FOREIGN KEY (queue_id) REFERENCES routing_queues(id) ON DELETE CASCADE
+			FOREIGN KEY (queue_id) REFERENCES routing_queues(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
 		// S111 architect / responsemanagement / IDP.
 		`CREATE TABLE IF NOT EXISTS architect_datatables (

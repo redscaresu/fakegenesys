@@ -63,8 +63,25 @@ func (app *Application) handleUserCreate(w http.ResponseWriter, r *http.Request)
 }
 
 func (app *Application) handleUserList(w http.ResponseWriter, r *http.Request) {
-	rows, err := listAllJSON(app.repo.DB(),
-		`SELECT body FROM users ORDER BY name`)
+	// S112 finding #7: real Genesys returns only active users by
+	// default; ?state=deleted filters to soft-deleted; ?state=any
+	// returns everything. fakegenesys mirrors that contract so the
+	// Terraform data source's default read doesn't see soft-deleted
+	// ghosts after a destroy + re-apply cycle.
+	stateFilter := r.URL.Query().Get("state")
+	var rows []json.RawMessage
+	var err error
+	switch stateFilter {
+	case "", "active":
+		rows, err = listAllJSON(app.repo.DB(),
+			`SELECT body FROM users WHERE state = 'active' ORDER BY name`)
+	case "any":
+		rows, err = listAllJSON(app.repo.DB(),
+			`SELECT body FROM users ORDER BY name`)
+	default:
+		rows, err = listAllJSON(app.repo.DB(),
+			`SELECT body FROM users WHERE state = ? ORDER BY name`, stateFilter)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
