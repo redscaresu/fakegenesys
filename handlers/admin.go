@@ -111,12 +111,12 @@ func (app *Application) collectState(service string) map[string]any {
 		"auth_roles":    app.gatherTable("auth_roles"),
 		"oauth_clients": app.gatherTable("oauth_clients"),
 		// S110 routing:
-		"routing_queues":       []any{},
-		"routing_skills":       []any{},
-		"routing_wrapupcodes":  []any{},
-		"routing_languages":    []any{},
-		"routing_utilization":  map[string]any{},
-		"routing_queue_members": []any{},
+		"routing_queues":        app.gatherTable("routing_queues"),
+		"routing_skills":        app.gatherTable("routing_skills"),
+		"routing_wrapupcodes":   app.gatherTable("routing_wrapupcodes"),
+		"routing_languages":     app.gatherTable("routing_languages"),
+		"routing_utilization":   app.gatherUtilization(),
+		"routing_queue_members": app.gatherQueueMembers(),
 		// S111 architect / responsemanagement / IDP:
 		"architect_datatables":         []any{},
 		"architect_datatable_rows":     []any{},
@@ -153,4 +153,40 @@ func (app *Application) gatherTable(table string) []json.RawMessage {
 		return []json.RawMessage{}
 	}
 	return rows
+}
+
+// gatherUtilization returns the singleton utilization config (or the
+// default empty config when no PUT has been issued).
+func (app *Application) gatherUtilization() json.RawMessage {
+	raw, err := scanOneJSON(app.repo.DB(),
+		`SELECT body FROM routing_utilization WHERE id = ?`, utilizationID)
+	if err != nil {
+		b, _ := json.Marshal(defaultUtilization())
+		return json.RawMessage(b)
+	}
+	return raw
+}
+
+// gatherQueueMembers returns the raw membership grid for topology
+// derivation. Each entry: {queueId, userId, ringNumber}.
+func (app *Application) gatherQueueMembers() []map[string]any {
+	out := []map[string]any{}
+	rows, err := app.repo.DB().Query(
+		`SELECT queue_id, user_id, ring_number FROM routing_queue_members ORDER BY queue_id, user_id`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var qID, uID string
+		var ring int
+		if err := rows.Scan(&qID, &uID, &ring); err == nil {
+			out = append(out, map[string]any{
+				"queueId":    qID,
+				"userId":     uID,
+				"ringNumber": ring,
+			})
+		}
+	}
+	return out
 }

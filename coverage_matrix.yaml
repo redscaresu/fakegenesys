@@ -69,3 +69,63 @@ resources:
       - "PUT    /api/v2/oauth/clients/{clientId}"
       - "DELETE /api/v2/oauth/clients/{clientId}"
     scenario_anchor: scenarios/training/genesys-rbac-and-oauth.yaml
+
+  - name: routing_queue
+    landed_in: S110
+    integration_test: handlers/routing_test.go::TestRoutingQueue_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/routing/queues"
+      - "GET    /api/v2/routing/queues"
+      - "GET    /api/v2/routing/queues/{queueId}"
+      - "PUT    /api/v2/routing/queues/{queueId}"
+      - "DELETE /api/v2/routing/queues/{queueId}"
+      - "POST   /api/v2/routing/queues/{queueId}/members"
+      - "GET    /api/v2/routing/queues/{queueId}/members"
+      - "PATCH  /api/v2/routing/queues/{queueId}/members"
+    scenario_anchor: scenarios/training/genesys-basic-queue.yaml
+
+  - name: routing_skill
+    landed_in: S110
+    integration_test: handlers/routing_test.go::TestRoutingSkill_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/routing/skills"
+      - "GET    /api/v2/routing/skills"
+      - "GET    /api/v2/routing/skills/{skillId}"
+      - "PATCH  /api/v2/routing/skills/{skillId}"
+      - "DELETE /api/v2/routing/skills/{skillId}"
+    scenario_anchor: scenarios/training/genesys-multi-queue-skills.yaml
+
+  - name: routing_wrapupcode
+    landed_in: S110
+    integration_test: handlers/routing_test.go::TestRoutingWrapupcode_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/routing/wrapupcodes"
+      - "GET    /api/v2/routing/wrapupcodes"
+      - "GET    /api/v2/routing/wrapupcodes/{codeId}"
+      - "PUT    /api/v2/routing/wrapupcodes/{codeId}"
+      - "DELETE /api/v2/routing/wrapupcodes/{codeId}"
+    scenario_anchor: scenarios/training/genesys-basic-queue.yaml
+
+  - name: routing_language
+    landed_in: S110
+    integration_test: handlers/routing_test.go::TestRoutingLanguage_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/routing/languages"
+      - "GET    /api/v2/routing/languages"
+      - "GET    /api/v2/routing/languages/{languageId}"
+      - "DELETE /api/v2/routing/languages/{languageId}"
+    scenario_anchor: scenarios/training/genesys-multi-queue-skills.yaml
+
+  - name: routing_utilization
+    landed_in: S110
+    integration_test: handlers/routing_test.go::TestRoutingUtilization_Singleton
+    examples_disposition: 3
+    spec_endpoints:
+      - "GET    /api/v2/routing/utilization"
+      - "PUT    /api/v2/routing/utilization"
+      - "DELETE /api/v2/routing/utilization"
+    scenario_anchor: scenarios/training/genesys-full-stack.yaml
