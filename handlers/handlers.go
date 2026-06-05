@@ -117,9 +117,14 @@ func (app *Application) RegisterRoutes(r chi.Router) {
 		app.registerRoutingWrapupcodeRoutes(ar)
 		app.registerRoutingLanguageRoutes(ar)
 		app.registerRoutingUtilizationRoutes(ar)
-		// Per-resource groups for later slices:
-		// app.registerArchitectDatatableRoutes(ar) (S111)
-		// ...
+		// S111 architect / responsemanagement / IDP.
+		// Datatable routes register before flow routes so chi matches
+		// the more-specific /flows/datatables prefix first.
+		app.registerArchitectDatatableRoutes(ar)
+		app.registerArchitectUserPromptRoutes(ar)
+		app.registerFlowRoutes(ar)
+		app.registerResponseManagementRoutes(ar)
+		app.registerIDPGenericRoutes(ar)
 		// Wildcard catch-all so unmatched /api/v2/* paths still run
 		// through the bearer middleware (chi requires at least one
 		// registered pattern for the subrouter prefix to dispatch).

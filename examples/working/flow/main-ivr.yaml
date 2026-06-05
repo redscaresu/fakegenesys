@@ -1,0 +1,13 @@
+flow:
+  name: main-ivr
+  division: Home
+  startUpRef: /flow/states/state[main:0]
+  defaultLanguage: en-us
+  states:
+    - state:
+        name: main
+        refId: main:0
+        actions:
+          - playAudio:
+              prompt: ""
+          - disconnect: {}

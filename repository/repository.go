@@ -200,9 +200,9 @@ func managedTables() []string {
 		"routing_queues", "routing_skills", "routing_wrapupcodes",
 		"routing_languages", "routing_utilization", "routing_queue_members",
 		// S111 architect / responsemanagement / IDP:
-		// "architect_datatables", "architect_datatable_rows",
-		// "architect_user_prompts", "flows",
-		// "responsemanagement_responses", "idp_generic",
+		"architect_datatables", "architect_datatable_rows",
+		"architect_user_prompts", "flows",
+		"responsemanagement_responses", "idp_generic",
 	}
 }
 
@@ -304,6 +304,52 @@ func (r *Repository) migrate() error {
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (queue_id, user_id),
 			FOREIGN KEY (queue_id) REFERENCES routing_queues(id) ON DELETE CASCADE
+		)`,
+		// S111 architect / responsemanagement / IDP.
+		`CREATE TABLE IF NOT EXISTS architect_datatables (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS architect_datatable_rows (
+			datatable_id TEXT NOT NULL,
+			row_id TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (datatable_id, row_id),
+			FOREIGN KEY (datatable_id) REFERENCES architect_datatables(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS architect_user_prompts (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS flows (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			type TEXT NOT NULL DEFAULT 'inboundcall',
+			state TEXT NOT NULL DEFAULT 'unpublished',
+			locked_user_id TEXT NOT NULL DEFAULT '',
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS responsemanagement_responses (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// idp_generic is a singleton — one row keyed by '_'.
+		`CREATE TABLE IF NOT EXISTS idp_generic (
+			id TEXT PRIMARY KEY,
+			body TEXT NOT NULL,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
 	}
 	for _, stmt := range stmts {

@@ -1,0 +1,127 @@
+package handlers
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/redscaresu/fakegenesys/models"
+)
+
+// responsemanagement_response — `/api/v2/responsemanagement/responses`
+// (POST/GET/list) + `/{responseId}` (GET/PUT/DELETE).
+//
+// Body is opaque (rich-text content). fakegenesys stores it verbatim.
+
+func (app *Application) registerResponseManagementRoutes(r chi.Router) {
+	r.Post("/responsemanagement/responses", app.handleResponseCreate)
+	r.Get("/responsemanagement/responses", app.handleResponseList)
+	r.Get("/responsemanagement/responses/{responseId}", app.handleResponseGet)
+	r.Put("/responsemanagement/responses/{responseId}", app.handleResponseUpdate)
+	r.Delete("/responsemanagement/responses/{responseId}", app.handleResponseDelete)
+}
+
+func (app *Application) handleResponseCreate(w http.ResponseWriter, r *http.Request) {
+	body, err := decodeJSONBody(r)
+	if err != nil {
+		writeBadRequest(w, "body: "+err.Error())
+		return
+	}
+	if err := requireStringFields(body, "name"); err != nil {
+		writeBadRequest(w, err.Error())
+		return
+	}
+	id := newID()
+	body["id"] = id
+	body["selfUri"] = "/api/v2/responsemanagement/responses/" + id
+	enc, _ := json.Marshal(body)
+	_, err = app.repo.DB().Exec(
+		`INSERT INTO responsemanagement_responses(id, name, body) VALUES (?, ?, ?)`,
+		id, body["name"].(string), string(enc),
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	writeJSONStatus(w, http.StatusCreated, json.RawMessage(enc))
+}
+
+func (app *Application) handleResponseList(w http.ResponseWriter, r *http.Request) {
+	rows, err := listAllJSON(app.repo.DB(),
+		`SELECT body FROM responsemanagement_responses ORDER BY name`)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	pagedList(w, r, rows)
+}
+
+func (app *Application) handleResponseGet(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "responseId")
+	raw, err := scanOneJSON(app.repo.DB(),
+		`SELECT body FROM responsemanagement_responses WHERE id = ?`, id)
+	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "responsemanagement_response")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	writeJSONStatus(w, http.StatusOK, raw)
+}
+
+func (app *Application) handleResponseUpdate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "responseId")
+	patch, err := decodeJSONBody(r)
+	if err != nil {
+		writeBadRequest(w, "body: "+err.Error())
+		return
+	}
+	existingRaw, err := scanOneJSON(app.repo.DB(),
+		`SELECT body FROM responsemanagement_responses WHERE id = ?`, id)
+	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "responsemanagement_response")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	var existing map[string]any
+	_ = json.Unmarshal(existingRaw, &existing)
+	for k, v := range patch {
+		if k == "id" || k == "selfUri" {
+			continue
+		}
+		existing[k] = v
+	}
+	enc, _ := json.Marshal(existing)
+	name, _ := existing["name"].(string)
+	_, err = app.repo.DB().Exec(
+		`UPDATE responsemanagement_responses SET name = ?, body = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		name, string(enc), id,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	writeJSONStatus(w, http.StatusOK, json.RawMessage(enc))
+}
+
+func (app *Application) handleResponseDelete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "responseId")
+	res, err := app.repo.DB().Exec(`DELETE FROM responsemanagement_responses WHERE id = ?`, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		writeNotFound(w, "responsemanagement_response")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

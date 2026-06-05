@@ -129,3 +129,71 @@ resources:
       - "PUT    /api/v2/routing/utilization"
       - "DELETE /api/v2/routing/utilization"
     scenario_anchor: scenarios/training/genesys-full-stack.yaml
+
+  - name: architect_datatable
+    landed_in: S111
+    integration_test: handlers/architect_test.go::TestDatatable_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/flows/datatables"
+      - "GET    /api/v2/flows/datatables"
+      - "GET    /api/v2/flows/datatables/{datatableId}"
+      - "PUT    /api/v2/flows/datatables/{datatableId}"
+      - "PATCH  /api/v2/flows/datatables/{datatableId}"
+      - "DELETE /api/v2/flows/datatables/{datatableId}"
+      - "POST   /api/v2/flows/datatables/{datatableId}/rows"
+      - "GET    /api/v2/flows/datatables/{datatableId}/rows"
+      - "GET    /api/v2/flows/datatables/{datatableId}/rows/{rowId}"
+      - "PUT    /api/v2/flows/datatables/{datatableId}/rows/{rowId}"
+      - "DELETE /api/v2/flows/datatables/{datatableId}/rows/{rowId}"
+    scenario_anchor: scenarios/training/genesys-architect-flow.yaml
+
+  - name: architect_user_prompt
+    landed_in: S111
+    integration_test: handlers/architect_test.go::TestUserPrompt_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/architect/prompts"
+      - "GET    /api/v2/architect/prompts"
+      - "GET    /api/v2/architect/prompts/{promptId}"
+      - "PUT    /api/v2/architect/prompts/{promptId}"
+      - "DELETE /api/v2/architect/prompts/{promptId}"
+    scenario_anchor: scenarios/training/genesys-architect-flow.yaml
+
+  - name: flow
+    landed_in: S111
+    integration_test: handlers/architect_test.go::TestFlow_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/flows"
+      - "GET    /api/v2/flows"
+      - "GET    /api/v2/flows/{flowId}"
+      - "PUT    /api/v2/flows/{flowId}"
+      - "DELETE /api/v2/flows/{flowId}"
+      - "POST   /api/v2/flows/actions/checkout"
+      - "POST   /api/v2/flows/actions/checkin"
+      - "POST   /api/v2/flows/actions/publish"
+      - "POST   /api/v2/flows/actions/unlock"
+    scenario_anchor: scenarios/training/genesys-architect-flow.yaml
+
+  - name: responsemanagement_response
+    landed_in: S111
+    integration_test: handlers/architect_test.go::TestResponseManagement_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/responsemanagement/responses"
+      - "GET    /api/v2/responsemanagement/responses"
+      - "GET    /api/v2/responsemanagement/responses/{responseId}"
+      - "PUT    /api/v2/responsemanagement/responses/{responseId}"
+      - "DELETE /api/v2/responsemanagement/responses/{responseId}"
+    scenario_anchor: scenarios/training/genesys-full-stack.yaml
+
+  - name: idp_generic
+    landed_in: S111
+    integration_test: handlers/architect_test.go::TestIDPGeneric_Singleton
+    examples_disposition: 3
+    spec_endpoints:
+      - "GET    /api/v2/identityproviders/generic"
+      - "PUT    /api/v2/identityproviders/generic"
+      - "DELETE /api/v2/identityproviders/generic"
+    scenario_anchor: scenarios/training/genesys-rbac-and-oauth.yaml

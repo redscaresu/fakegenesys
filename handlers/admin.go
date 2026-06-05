@@ -118,12 +118,12 @@ func (app *Application) collectState(service string) map[string]any {
 		"routing_utilization":   app.gatherUtilization(),
 		"routing_queue_members": app.gatherQueueMembers(),
 		// S111 architect / responsemanagement / IDP:
-		"architect_datatables":         []any{},
-		"architect_datatable_rows":     []any{},
-		"architect_user_prompts":       []any{},
-		"flows":                        []any{},
-		"responsemanagement_responses": []any{},
-		"idp_generic":                  map[string]any{},
+		"architect_datatables":         app.gatherTable("architect_datatables"),
+		"architect_datatable_rows":     app.gatherDatatableRows(),
+		"architect_user_prompts":       app.gatherTable("architect_user_prompts"),
+		"flows":                        app.gatherTable("flows"),
+		"responsemanagement_responses": app.gatherTable("responsemanagement_responses"),
+		"idp_generic":                  app.gatherIDPGeneric(),
 	}
 	if service == "" {
 		return full
@@ -163,6 +163,41 @@ func (app *Application) gatherUtilization() json.RawMessage {
 	if err != nil {
 		b, _ := json.Marshal(defaultUtilization())
 		return json.RawMessage(b)
+	}
+	return raw
+}
+
+// gatherDatatableRows returns the raw rows grid for topology
+// derivation. Each entry: {datatableId, rowId, body}.
+func (app *Application) gatherDatatableRows() []map[string]any {
+	out := []map[string]any{}
+	rows, err := app.repo.DB().Query(
+		`SELECT datatable_id, row_id, body FROM architect_datatable_rows ORDER BY datatable_id, row_id`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dtID, rowID string
+		var body []byte
+		if err := rows.Scan(&dtID, &rowID, &body); err == nil {
+			out = append(out, map[string]any{
+				"datatableId": dtID,
+				"rowId":       rowID,
+				"body":        json.RawMessage(body),
+			})
+		}
+	}
+	return out
+}
+
+// gatherIDPGeneric returns the singleton IDP config, or an empty
+// object when not configured.
+func (app *Application) gatherIDPGeneric() json.RawMessage {
+	raw, err := scanOneJSON(app.repo.DB(),
+		`SELECT body FROM idp_generic WHERE id = ?`, idpGenericID)
+	if err != nil {
+		return json.RawMessage(`{}`)
 	}
 	return raw
 }
