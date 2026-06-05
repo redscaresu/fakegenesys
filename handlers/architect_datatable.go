@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -145,7 +146,11 @@ func (app *Application) handleDatatableDelete(w http.ResponseWriter, r *http.Req
 func (app *Application) handleDatatableRowCreate(w http.ResponseWriter, r *http.Request) {
 	dtID := chi.URLParam(r, "datatableId")
 	if err := app.requireDatatableExists(dtID); err != nil {
-		writeNotFound(w, "architect_datatable")
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "architect_datatable")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
 	body, err := decodeJSONBody(r)
@@ -177,7 +182,11 @@ func (app *Application) handleDatatableRowCreate(w http.ResponseWriter, r *http.
 func (app *Application) handleDatatableRowList(w http.ResponseWriter, r *http.Request) {
 	dtID := chi.URLParam(r, "datatableId")
 	if err := app.requireDatatableExists(dtID); err != nil {
-		writeNotFound(w, "architect_datatable")
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "architect_datatable")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
 	rows, err := listAllJSON(app.repo.DB(),
@@ -214,7 +223,11 @@ func (app *Application) handleDatatableRowUpdate(w http.ResponseWriter, r *http.
 	// "architect_datatable not found", not "architect_datatable_row
 	// not found" (which would mislead the caller).
 	if err := app.requireDatatableExists(dtID); err != nil {
-		writeNotFound(w, "architect_datatable")
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "architect_datatable")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
 	body, err := decodeJSONBody(r)
@@ -222,10 +235,15 @@ func (app *Application) handleDatatableRowUpdate(w http.ResponseWriter, r *http.
 		writeBadRequest(w, "body: "+err.Error())
 		return
 	}
+	// S113 pass-2 finding #3: distinguish row-missing from DB errors.
 	if _, err := scanOneJSON(app.repo.DB(),
 		`SELECT body FROM architect_datatable_rows WHERE datatable_id = ? AND row_id = ?`,
 		dtID, rowID); err != nil {
-		writeNotFound(w, "architect_datatable_row")
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "architect_datatable_row")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
 	body["key"] = rowID
@@ -245,7 +263,11 @@ func (app *Application) handleDatatableRowDelete(w http.ResponseWriter, r *http.
 	rowID := chi.URLParam(r, "rowId")
 	// S112 finding #12: same parent-not-found classification as Update.
 	if err := app.requireDatatableExists(dtID); err != nil {
-		writeNotFound(w, "architect_datatable")
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "architect_datatable")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
 	res, err := app.repo.DB().Exec(
@@ -263,11 +285,16 @@ func (app *Application) handleDatatableRowDelete(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// S113 pass-2 finding #3: differentiate ErrNotFound from DB errors so
+// callers can render 500 instead of 404 on a degraded DB.
 func (app *Application) requireDatatableExists(id string) error {
 	var dummy string
 	row := app.repo.DB().QueryRow(`SELECT id FROM architect_datatables WHERE id = ?`, id)
 	if err := row.Scan(&dummy); err != nil {
-		return models.ErrNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.ErrNotFound
+		}
+		return err
 	}
 	return nil
 }
