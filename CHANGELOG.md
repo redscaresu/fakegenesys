@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (S109)
+- **5 identity resources** with full CRUD: `genesyscloud_user` (POST/GET/list/PATCH/DELETE, **soft delete** flipping `state=deleted`), `genesyscloud_group` (POST/GET/list/PUT/DELETE), `genesyscloud_location` (POST/GET/list/PATCH/DELETE), `genesyscloud_auth_role` (POST/GET/list/PUT+PATCH/DELETE + unique-name 409), `genesyscloud_oauth_client` (POST/GET/list/PUT/DELETE + **reveal-once secret**).
+- **Shared CRUD helpers** in `handlers/crud.go`: paged-list envelope, JSON body decode, ID generation, error helpers. Mirrors fakegcp's pattern.
+- **SQLite schema**: per-resource tables with the unique constraints the spec declares (`users.email`, `auth_roles.name`).
+- **Test coverage**: lifecycle + pagination + 400 + 404 + 409 + soft-delete + reveal-once across all 5 resources (`handlers/identity_test.go`).
+- **Examples**: 15 directories (5 resources × {working, updates, misconfigured}). Each working/updates dir is a 2-line resource block; each misconfigured dir exercises a documented error path with `expected.txt`.
+- **`/mock/state`** now includes the 5 identity resource arrays via the generic `gatherTable` helper (no per-resource gather code).
+- **`coverage_matrix.yaml`** seeded with the 5 identity entries.
+- **`docs/spec-notes/identity.md`** with per-endpoint shape + error code summary, cross-referenced to the handlers.
+
 ### Added (S108)
 - **Repo scaffold + OSS-mature layout** mirroring fakeaws (LICENSE, SECURITY, CONTRIBUTING, CODE_OF_CONDUCT, CHANGELOG, .gitleaks.toml, .githooks/pre-commit, CI + release workflows, dependabot).
 - **`cmd/fakegenesys/main.go`** with `--port`, `--db`, `--echo` flags. Default port `:8083` (next after fakeaws `:8082`).

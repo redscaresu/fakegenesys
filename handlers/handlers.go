@@ -105,12 +105,13 @@ func (app *Application) RegisterRoutes(r chi.Router) {
 	// NotFound would bypass the auth chain).
 	r.Route("/api/v2", func(ar chi.Router) {
 		ar.Use(app.bearerAuth)
-		// Per-resource groups land here as slices arrive:
-		// app.registerUserRoutes(ar)           (S109)
-		// app.registerGroupRoutes(ar)          (S109)
-		// app.registerLocationRoutes(ar)       (S109)
-		// app.registerAuthRoleRoutes(ar)       (S109)
-		// app.registerOAuthClientRoutes(ar)    (S109)
+		// S109 identity:
+		app.registerUserRoutes(ar)
+		app.registerGroupRoutes(ar)
+		app.registerLocationRoutes(ar)
+		app.registerAuthRoleRoutes(ar)
+		app.registerOAuthClientRoutes(ar)
+		// Per-resource groups for later slices:
 		// app.registerRoutingQueueRoutes(ar)   (S110)
 		// ...
 		// Wildcard catch-all so unmatched /api/v2/* paths still run

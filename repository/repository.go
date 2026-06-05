@@ -194,13 +194,13 @@ func copyFile(src, dst string) error {
 // Per-slice tickets append to this list when adding a new resource.
 func managedTables() []string {
 	return []string{
-		// S109 identity resources land here:
-		// "users", "groups", "locations", "auth_roles", "oauth_clients",
-		// S110 routing resources:
+		// S109 identity:
+		"users", "groups", "locations", "auth_roles", "oauth_clients",
+		// S110 routing:
 		// "routing_queues", "routing_skills", "routing_wrapupcodes",
 		// "routing_languages", "routing_utilization",
 		// "routing_queue_members",
-		// S111 architect / responsemanagement / IDP resources:
+		// S111 architect / responsemanagement / IDP:
 		// "architect_datatables", "architect_datatable_rows",
 		// "architect_user_prompts", "flows",
 		// "responsemanagement_responses", "idp_generic",
@@ -216,6 +216,51 @@ func (r *Repository) migrate() error {
 			path TEXT NOT NULL,
 			status_code INTEGER NOT NULL,
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// S109 identity tables. Body is the opaque JSON-serialized
+		// representation the API returns on GET. Indexed identity
+		// columns (email for users, name for auth_roles) carry
+		// uniqueness constraints the spec declares.
+		`CREATE TABLE IF NOT EXISTS users (
+			id TEXT PRIMARY KEY,
+			email TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			state TEXT NOT NULL DEFAULT 'active',
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS groups (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT 'official',
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS locations (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS auth_roles (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			body TEXT NOT NULL,
+			default_role INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS oauth_clients (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			secret TEXT NOT NULL,
+			grant_type TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
 	}
 	for _, stmt := range stmts {
