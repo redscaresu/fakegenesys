@@ -1,0 +1,23 @@
+# fakegenesys gitleaks configuration.
+#
+# Mirrors the fakeaws strict-rule pattern: inherits gitleaks defaults
+# via [extend], allows placeholder credentials inside Terraform example
+# fixtures (since the smoke harness `providers.tf` files reference
+# placeholder client_id/client_secret pairs), but tightens detection
+# in source files where real Genesys client credentials might leak.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documentation and example fixtures may reference placeholder strings"
+paths = [
+  # Terraform example fixtures — placeholder credentials only.
+  '''examples/.*\.tf$''',
+  # Markdown docs may reference Genesys-published placeholder strings
+  # (test-tenant client_id/client_secret) for illustration. Real
+  # secrets in markdown would be a developer mistake.
+  '''.*\.md$''',
+  # Test fixtures and snapshot files may include placeholder tokens.
+  '''.*_test\.go$''',
+]

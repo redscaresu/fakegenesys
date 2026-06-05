@@ -1,0 +1,119 @@
+#!/bin/sh
+# Pre-commit hook. Order matters:
+#   1. gitleaks       — short-circuit before tests can print secrets to logs
+#   2. go vet         — bug catcher, sub-second
+#   3. gofmt -l       — reject unformatted code
+#   4. git diff --check — whitespace damage (trailing space, mixed indent)
+#   5. large-file     — reject accidentally-staged binaries > 5MB
+#   6. yaml/json      — syntax-check staged config files
+#   7. go test        — full test suite, last because slowest
+#
+# Wired via `git config core.hooksPath .githooks` — run `make install-hooks`
+# once per clone.
+
+set -e
+
+# ---------- 1. gitleaks ----------
+echo "Scanning for secrets (gitleaks)..."
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --no-banner --config .gitleaks.toml
+  echo "No secrets detected."
+else
+  echo "WARN: gitleaks not on PATH; skipping. Install with 'brew install gitleaks' or download from github.com/gitleaks/gitleaks/releases."
+fi
+echo ""
+
+# ---------- 2. go vet ----------
+echo "Running go vet..."
+go vet ./...
+echo "go vet clean."
+echo ""
+
+# ---------- 3. gofmt -l ----------
+STAGED_GO=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.go$' || true)
+if [ -n "$STAGED_GO" ]; then
+  echo "Checking gofmt on staged .go files..."
+  UNFORMATTED=$(echo "$STAGED_GO" | xargs gofmt -l 2>/dev/null || true)
+  if [ -n "$UNFORMATTED" ]; then
+    echo "ERROR: the following staged files are not gofmt-clean:"
+    echo "$UNFORMATTED" | sed 's/^/  /'
+    echo ""
+    echo "Fix with: gofmt -w $(echo "$UNFORMATTED" | tr '\n' ' ')"
+    exit 1
+  fi
+  echo "gofmt clean."
+  echo ""
+fi
+
+# ---------- 4. whitespace check ----------
+echo "Checking for whitespace errors..."
+git diff --cached --check
+echo "No whitespace errors."
+echo ""
+
+# ---------- 5. large-file guard ----------
+echo "Checking for large staged files (>5MB)..."
+MAX_BYTES=5242880
+TOO_LARGE=""
+for f in $(git diff --cached --name-only --diff-filter=ACMR); do
+  [ -f "$f" ] || continue
+  SIZE=$(wc -c < "$f" | tr -d ' ')
+  if [ "$SIZE" -gt "$MAX_BYTES" ]; then
+    MB=$((SIZE / 1024 / 1024))
+    TOO_LARGE="${TOO_LARGE}  ${f} (${MB}MB)
+"
+  fi
+done
+if [ -n "$TOO_LARGE" ]; then
+  echo "ERROR: the following staged files exceed 5MB:"
+  printf "%s" "$TOO_LARGE"
+  echo "Note: specs/genesys-openapi.json is exempt (see allowlist comment in this hook)."
+  # specs/genesys-openapi.json is intentionally allowed past this gate
+  # since it's a 5MB+ OpenAPI artifact downloaded from Genesys. If only
+  # the spec is large, drop it from the error.
+  ONLY_SPEC=true
+  for f in $(echo "$TOO_LARGE" | awk '{print $1}'); do
+    case "$f" in
+      specs/genesys-openapi.json) ;;
+      "") ;;
+      *) ONLY_SPEC=false ;;
+    esac
+  done
+  if [ "$ONLY_SPEC" = "true" ]; then
+    echo "Only the OpenAPI spec is large — allowed."
+  else
+    echo "If this is intentional, bypass with --no-verify (NOT recommended — consider git-lfs)."
+    exit 1
+  fi
+fi
+echo ""
+
+# ---------- 6. yaml/json syntax ----------
+STAGED_YAML=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(yaml|yml)$' || true)
+STAGED_JSON=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.json$' || true)
+if [ -n "$STAGED_YAML" ] || [ -n "$STAGED_JSON" ]; then
+  echo "Validating YAML/JSON syntax..."
+  for f in $STAGED_YAML; do
+    [ -f "$f" ] || continue
+    if ! ERR=$(python3 -c "import yaml; yaml.safe_load(open('$f'))" 2>&1); then
+      echo "ERROR: $f failed YAML parse:"
+      echo "$ERR" | sed 's/^/  /'
+      exit 1
+    fi
+  done
+  for f in $STAGED_JSON; do
+    [ -f "$f" ] || continue
+    if ! ERR=$(python3 -c "import json; json.load(open('$f'))" 2>&1); then
+      echo "ERROR: $f failed JSON parse:"
+      echo "$ERR" | sed 's/^/  /'
+      exit 1
+    fi
+  done
+  echo "Config files parse clean."
+  echo ""
+fi
+
+# ---------- 7. go test ----------
+echo "Running tests..."
+go test ./...
+echo "All tests passed."
