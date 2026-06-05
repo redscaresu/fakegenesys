@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed / Fixed (S112)
+- **Restore corruption guard**: `repository.Restore` now stages the snapshot at `<dbPath>.restore-tmp` and opens + verifies before closing the existing handle. On any error path the old DB stays usable instead of leaving a dead handle (full archive in `docs/review-passes/pass1.md` finding #1).
+- **spec_cross_reference test rewritten**: walks the live chi route tree via `chi.Walk` and asserts every `/api/v2/...` route exists in `specs/genesys-openapi.json`. Caught and removed an unspec'd `PATCH /flows/datatables/{id}` route immediately.
+- **known_broken ratchet inverted**: if a known-broken example dir now passes idempotency, the smoke harness fails with "congratulations, remove this entry" instead of silently skipping.
+- **flow `flowAction` no longer masks DB errors as 404**: branches on `errors.Is(err, models.ErrNotFound)`.
+- **flow PUT no longer bypasses the state machine**: `state` + `lockedUser` are stripped from the PUT-merge keys; only `/api/v2/flows/actions/*` can transition.
+- **flow PUT multipart with no file part now 400s**: silent no-op was a production-shaped foot-gun.
+- **`/routing/queues/{id}/members?delete=true`**: POST with the delete flag now removes the listed users instead of unconditionally adding.
+- **`GET /api/v2/users` honors `?state`**: default is `active` (mirrors real Genesys); `state=deleted` filters soft-deleted; `state=any` returns everything.
+- **`routing_queue_members.user_id`** now carries a FK to `users(id) ON DELETE CASCADE`.
+- **datatable row update/delete** now report "architect_datatable not found" instead of "architect_datatable_row not found" when the parent is missing.
+- **Bearer scheme case-insensitive** per RFC 6750 § 2.1: `bearer xyz` now accepted.
+- **Test coverage extended** for: full flow state machine (checkin + unlock + PUT-bypass attempt), empty multipart 400, delete-flag POST on members, `?state` user list filtering, FK CASCADE on user → membership.
+
 ### Added (S111)
 - **5 architect / responsemanagement / IDP resources**: `genesyscloud_architect_datatable` (with rows sub-resource + FK cascade), `genesyscloud_architect_user_prompt` (unique name), `genesyscloud_flow` (multipart upload + lock/publish state machine), `genesyscloud_responsemanagement_response`, `genesyscloud_idp_generic` (singleton).
 - **`flow` lock/publish state machine**: `POST /api/v2/flows/actions/{checkout,checkin,publish,unlock,revert,deactivate}?flow={id}`. Transitions persisted in `flows.state`. Initial state `unpublished`; checkout → `locked` + sets `lockedUser`; publish → `published` + clears lock.

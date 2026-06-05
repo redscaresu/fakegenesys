@@ -119,6 +119,73 @@ func TestRoutingQueue_Members_OnMissingQueue404(t *testing.T) {
 	}
 }
 
+// S112 finding #5: POST /members?delete=true removes the listed users.
+func TestRoutingQueue_MembersAdd_DeleteFlag(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+	var queue map[string]any
+	ts.PostJSON(t, "/api/v2/routing/queues",
+		map[string]any{"name": "queue-delete-flag"}, &queue)
+	qID := queue["id"].(string)
+	var u1 map[string]any
+	ts.PostJSON(t, "/api/v2/users",
+		map[string]any{"name": "U1", "email": "delete-flag@example.com"}, &u1)
+	u1ID := u1["id"].(string)
+
+	ts.PostJSON(t, "/api/v2/routing/queues/"+qID+"/members",
+		[]map[string]any{{"id": u1ID}}, nil)
+	var listing struct {
+		Total int `json:"total"`
+	}
+	ts.GetJSON(t, "/api/v2/routing/queues/"+qID+"/members", &listing)
+	if listing.Total != 1 {
+		t.Fatalf("after add: total = %d, want 1", listing.Total)
+	}
+
+	resp := ts.PostJSON(t, "/api/v2/routing/queues/"+qID+"/members?delete=true",
+		[]map[string]any{{"id": u1ID}}, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete-flag POST: status %d", resp.StatusCode)
+	}
+	ts.GetJSON(t, "/api/v2/routing/queues/"+qID+"/members", &listing)
+	if listing.Total != 0 {
+		t.Fatalf("after delete-flag: total = %d, want 0", listing.Total)
+	}
+}
+
+// S112 finding #7: list users filters by ?state.
+func TestUser_ListFiltersByState(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+	var alive, doomed map[string]any
+	ts.PostJSON(t, "/api/v2/users",
+		map[string]any{"name": "Alive", "email": "alive@example.com"}, &alive)
+	ts.PostJSON(t, "/api/v2/users",
+		map[string]any{"name": "Doomed", "email": "doomed@example.com"}, &doomed)
+	ts.DeleteJSON(t, "/api/v2/users/"+doomed["id"].(string))
+
+	type listing struct {
+		Entities []map[string]any `json:"entities"`
+		Total    int              `json:"total"`
+	}
+
+	var def listing
+	ts.GetJSON(t, "/api/v2/users", &def)
+	if def.Total != 1 {
+		t.Fatalf("default state: total = %d, want 1", def.Total)
+	}
+
+	var del listing
+	ts.GetJSON(t, "/api/v2/users?state=deleted", &del)
+	if del.Total != 1 {
+		t.Fatalf("?state=deleted: total = %d, want 1", del.Total)
+	}
+
+	var anyState listing
+	ts.GetJSON(t, "/api/v2/users?state=any", &anyState)
+	if anyState.Total != 2 {
+		t.Fatalf("?state=any: total = %d, want 2", anyState.Total)
+	}
+}
+
 // --- routing_skill ---------------------------------------------------
 
 func TestRoutingSkill_Lifecycle(t *testing.T) {

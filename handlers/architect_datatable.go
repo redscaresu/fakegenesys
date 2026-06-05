@@ -28,7 +28,7 @@ func (app *Application) registerArchitectDatatableRoutes(r chi.Router) {
 	r.Get("/flows/datatables", app.handleDatatableList)
 	r.Get("/flows/datatables/{datatableId}", app.handleDatatableGet)
 	r.Put("/flows/datatables/{datatableId}", app.handleDatatableUpdate)
-	r.Patch("/flows/datatables/{datatableId}", app.handleDatatableUpdate)
+	// PATCH not in spec — Reverse Fidelity (S112 finding #2 caught this).
 	r.Delete("/flows/datatables/{datatableId}", app.handleDatatableDelete)
 	r.Post("/flows/datatables/{datatableId}/rows", app.handleDatatableRowCreate)
 	r.Get("/flows/datatables/{datatableId}/rows", app.handleDatatableRowList)
@@ -210,6 +210,13 @@ func (app *Application) handleDatatableRowGet(w http.ResponseWriter, r *http.Req
 func (app *Application) handleDatatableRowUpdate(w http.ResponseWriter, r *http.Request) {
 	dtID := chi.URLParam(r, "datatableId")
 	rowID := chi.URLParam(r, "rowId")
+	// S112 finding #12: missing parent datatable is reported as
+	// "architect_datatable not found", not "architect_datatable_row
+	// not found" (which would mislead the caller).
+	if err := app.requireDatatableExists(dtID); err != nil {
+		writeNotFound(w, "architect_datatable")
+		return
+	}
 	body, err := decodeJSONBody(r)
 	if err != nil {
 		writeBadRequest(w, "body: "+err.Error())
@@ -236,6 +243,11 @@ func (app *Application) handleDatatableRowUpdate(w http.ResponseWriter, r *http.
 func (app *Application) handleDatatableRowDelete(w http.ResponseWriter, r *http.Request) {
 	dtID := chi.URLParam(r, "datatableId")
 	rowID := chi.URLParam(r, "rowId")
+	// S112 finding #12: same parent-not-found classification as Update.
+	if err := app.requireDatatableExists(dtID); err != nil {
+		writeNotFound(w, "architect_datatable")
+		return
+	}
 	res, err := app.repo.DB().Exec(
 		`DELETE FROM architect_datatable_rows WHERE datatable_id = ? AND row_id = ?`,
 		dtID, rowID)

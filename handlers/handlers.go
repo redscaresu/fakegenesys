@@ -142,13 +142,15 @@ func (app *Application) RegisterRoutes(r chi.Router) {
 func (app *Application) bearerAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		const prefix = "Bearer "
-		if !strings.HasPrefix(auth, prefix) {
+		// RFC 6750 § 2.1: the auth-scheme token is case-insensitive.
+		// Real Genesys accepts both "Bearer" and "bearer" — we do too.
+		// (S112 finding #13.)
+		if len(auth) < len("Bearer ") || !strings.EqualFold(auth[:len("Bearer ")], "Bearer ") {
 			writeError(w, http.StatusUnauthorized, "authentication.required",
 				"Bearer token required")
 			return
 		}
-		token := strings.TrimPrefix(auth, prefix)
+		token := auth[len("Bearer "):]
 		if !app.tokens.Valid(token) {
 			writeError(w, http.StatusUnauthorized, "authentication.invalid",
 				"Bearer token invalid or expired")

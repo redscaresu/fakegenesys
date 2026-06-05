@@ -133,6 +133,7 @@ func (app *Application) handleFlowUpdate(w http.ResponseWriter, r *http.Request)
 			writeBadRequest(w, "multipart parse: "+err.Error())
 			return
 		}
+		gotFile := false
 		for _, fhs := range r.MultipartForm.File {
 			for _, fh := range fhs {
 				f, err := fh.Open()
@@ -148,7 +149,14 @@ func (app *Application) handleFlowUpdate(w http.ResponseWriter, r *http.Request)
 				}
 				existing["multipartContent"] = string(b)
 				existing["multipartFilename"] = fh.Filename
+				gotFile = true
 			}
+		}
+		// S112 finding #11: silent no-op on empty multipart is a
+		// production-shaped bug. Surface explicitly.
+		if !gotFile {
+			writeBadRequest(w, "multipart upload missing file part")
+			return
 		}
 	} else {
 		patch, err := decodeJSONBody(r)
@@ -156,8 +164,10 @@ func (app *Application) handleFlowUpdate(w http.ResponseWriter, r *http.Request)
 			writeBadRequest(w, "body: "+err.Error())
 			return
 		}
+		// S112 finding #9: state + lockedUser are owned by the
+		// /flows/actions/* state machine. Don't let a PUT bypass it.
 		for k, v := range patch {
-			if k == "id" || k == "selfUri" {
+			if k == "id" || k == "selfUri" || k == "state" || k == "lockedUser" {
 				continue
 			}
 			existing[k] = v
@@ -206,7 +216,13 @@ func (app *Application) flowAction(w http.ResponseWriter, r *http.Request, newSt
 	existingRaw, err := scanOneJSON(app.repo.DB(),
 		`SELECT body FROM flows WHERE id = ?`, flowID)
 	if err != nil {
-		writeNotFound(w, "flow")
+		// S112 finding #4: branch on ErrNotFound, don't mask DB
+		// failures as 404s.
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "flow")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
 	var existing map[string]any
