@@ -111,8 +111,14 @@ func (app *Application) RegisterRoutes(r chi.Router) {
 		app.registerLocationRoutes(ar)
 		app.registerAuthRoleRoutes(ar)
 		app.registerOAuthClientRoutes(ar)
+		// S110 routing:
+		app.registerRoutingQueueRoutes(ar)
+		app.registerRoutingSkillRoutes(ar)
+		app.registerRoutingWrapupcodeRoutes(ar)
+		app.registerRoutingLanguageRoutes(ar)
+		app.registerRoutingUtilizationRoutes(ar)
 		// Per-resource groups for later slices:
-		// app.registerRoutingQueueRoutes(ar)   (S110)
+		// app.registerArchitectDatatableRoutes(ar) (S111)
 		// ...
 		// Wildcard catch-all so unmatched /api/v2/* paths still run
 		// through the bearer middleware (chi requires at least one

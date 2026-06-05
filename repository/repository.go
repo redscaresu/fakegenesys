@@ -197,9 +197,8 @@ func managedTables() []string {
 		// S109 identity:
 		"users", "groups", "locations", "auth_roles", "oauth_clients",
 		// S110 routing:
-		// "routing_queues", "routing_skills", "routing_wrapupcodes",
-		// "routing_languages", "routing_utilization",
-		// "routing_queue_members",
+		"routing_queues", "routing_skills", "routing_wrapupcodes",
+		"routing_languages", "routing_utilization", "routing_queue_members",
 		// S111 architect / responsemanagement / IDP:
 		// "architect_datatables", "architect_datatable_rows",
 		// "architect_user_prompts", "flows",
@@ -261,6 +260,50 @@ func (r *Repository) migrate() error {
 			body TEXT NOT NULL,
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// S110 routing tables. routing_queue_members carries an FK
+		// reference to routing_queues so cascade-delete fires.
+		`CREATE TABLE IF NOT EXISTS routing_queues (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS routing_skills (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS routing_wrapupcodes (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS routing_languages (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// routing_utilization is a singleton — one row with id='_'.
+		`CREATE TABLE IF NOT EXISTS routing_utilization (
+			id TEXT PRIMARY KEY,
+			body TEXT NOT NULL,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS routing_queue_members (
+			queue_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			ring_number INTEGER NOT NULL DEFAULT 1,
+			joined INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (queue_id, user_id),
+			FOREIGN KEY (queue_id) REFERENCES routing_queues(id) ON DELETE CASCADE
 		)`,
 	}
 	for _, stmt := range stmts {

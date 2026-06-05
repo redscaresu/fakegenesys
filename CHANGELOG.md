@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (S110)
+- **5 routing resources** with full CRUD: `genesyscloud_routing_queue` (POST/GET/list + PUT/DELETE + members sub-resource with idempotent PATCH set-replace + CASCADE delete), `genesyscloud_routing_skill` (POST/GET/list + PATCH/DELETE), `genesyscloud_routing_wrapupcode` (POST/GET/list + PUT/DELETE), `genesyscloud_routing_language` (POST/GET/list + DELETE — no PUT/PATCH per spec), `genesyscloud_routing_utilization` (singleton: GET/PUT/DELETE).
+- **FK cascade**: `routing_queue_members` references `routing_queues(id) ON DELETE CASCADE`. Deleting a queue purges memberships.
+- **Idempotent member set replace**: `PATCH /api/v2/routing/queues/{queueId}/members` wipes the queue's existing members and re-inserts the request body in a single transaction.
+- **Singleton utilization**: `routing_utilization` is keyed by `id='_'`; initial GET returns `{"utilization":{}}` when no PUT has been issued.
+- **Test coverage**: lifecycle + dup-name 409 + member idempotency + member 404 on missing queue + cascade behavior + singleton round-trip across all 5 resources (`handlers/routing_test.go`, 8 tests).
+- **15 example dirs** (5 routing × {working, updates, misconfigured}). `routing_language` updates dir holds suffix invariant (the spec doesn't allow PUT/PATCH). `routing_utilization` misconfigured dir is a Reverse-Fidelity placeholder noted inline.
+- **`/mock/state`** extended for routing: `routing_queue_members` returns the membership grid for topology derivation; `routing_utilization` returns the singleton body or default.
+- **`coverage_matrix.yaml`** + `docs/spec-notes/routing.md` updated.
+
 ### Added (S109)
 - **5 identity resources** with full CRUD: `genesyscloud_user` (POST/GET/list/PATCH/DELETE, **soft delete** flipping `state=deleted`), `genesyscloud_group` (POST/GET/list/PUT/DELETE), `genesyscloud_location` (POST/GET/list/PATCH/DELETE), `genesyscloud_auth_role` (POST/GET/list/PUT+PATCH/DELETE + unique-name 409), `genesyscloud_oauth_client` (POST/GET/list/PUT/DELETE + **reveal-once secret**).
 - **Shared CRUD helpers** in `handlers/crud.go`: paged-list envelope, JSON body decode, ID generation, error helpers. Mirrors fakegcp's pattern.
