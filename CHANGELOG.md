@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (S111)
+- **5 architect / responsemanagement / IDP resources**: `genesyscloud_architect_datatable` (with rows sub-resource + FK cascade), `genesyscloud_architect_user_prompt` (unique name), `genesyscloud_flow` (multipart upload + lock/publish state machine), `genesyscloud_responsemanagement_response`, `genesyscloud_idp_generic` (singleton).
+- **`flow` lock/publish state machine**: `POST /api/v2/flows/actions/{checkout,checkin,publish,unlock,revert,deactivate}?flow={id}`. Transitions persisted in `flows.state`. Initial state `unpublished`; checkout → `locked` + sets `lockedUser`; publish → `published` + clears lock.
+- **`flow` multipart upload**: PUT accepts `multipart/form-data` (any file part) OR `application/json` (top-level merge). Multipart file content + filename persisted opaquely in `body.multipartContent` / `body.multipartFilename` for round-trip GET.
+- **`/flows/datatables` routes registered BEFORE `/flows/{flowId}`** so chi matches the static `datatables` segment first.
+- **`architect_datatable` rows**: CRUD per row with `key` as the row's unique ID. Duplicate key → 409. FK cascade on parent delete.
+- **`idp_generic`** singleton: initial GET → 404 (not configured); PUT installs; DELETE removes.
+- **Test coverage** (`handlers/architect_test.go`, 7 tests): datatable + rows lifecycle + cascade; user prompt lifecycle + dup-name 409; flow state machine + multipart round-trip; response lifecycle; IDP singleton GET/PUT/DELETE round-trip.
+- **15 example dirs** (5 × {working, updates, misconfigured}). `flow/working` ships a real flow YAML; `flow/updates` exercises v1/v2 YAML swap.
+- **`/mock/state`** extended for architect (per-table walk + `gatherDatatableRows` for topology + `gatherIDPGeneric` singleton).
+- **`coverage_matrix.yaml`** + `docs/spec-notes/architect.md` updated.
+
 ### Added (S110)
 - **5 routing resources** with full CRUD: `genesyscloud_routing_queue` (POST/GET/list + PUT/DELETE + members sub-resource with idempotent PATCH set-replace + CASCADE delete), `genesyscloud_routing_skill` (POST/GET/list + PATCH/DELETE), `genesyscloud_routing_wrapupcode` (POST/GET/list + PUT/DELETE), `genesyscloud_routing_language` (POST/GET/list + DELETE — no PUT/PATCH per spec), `genesyscloud_routing_utilization` (singleton: GET/PUT/DELETE).
 - **FK cascade**: `routing_queue_members` references `routing_queues(id) ON DELETE CASCADE`. Deleting a queue purges memberships.

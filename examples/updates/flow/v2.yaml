@@ -1,0 +1,7 @@
+flow:
+  name: flow-updates
+  division: Home
+  defaultLanguage: en-us
+  states:
+    - state:
+        name: greet-v2

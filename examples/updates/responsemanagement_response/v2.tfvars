@@ -1,0 +1,1 @@
+content = "Updated canned text"
