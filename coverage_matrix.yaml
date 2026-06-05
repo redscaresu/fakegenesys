@@ -1,0 +1,71 @@
+# coverage_matrix.yaml — per-resource coverage tracking.
+#
+# Each resource entry pins: integration test file, example dirs (3
+# trees), and the scenario anchor in infrafactory that exercises it
+# end-to-end. The `examples_disposition` field encodes
+# `working+updates+misconfigured` coverage (3 = all three trees ship).
+#
+# Lands as resources arrive. S108 ships an empty matrix; S109 fills
+# in identity; S110 fills routing; S111 fills architect.
+version: 1
+resources:
+  - name: user
+    landed_in: S109
+    integration_test: handlers/identity_test.go::TestUser_*
+    examples_disposition: 3   # working + updates + misconfigured
+    spec_endpoints:
+      - "POST   /api/v2/users"
+      - "GET    /api/v2/users"
+      - "GET    /api/v2/users/{userId}"
+      - "PATCH  /api/v2/users/{userId}"
+      - "DELETE /api/v2/users/{userId}"
+    scenario_anchor: scenarios/training/genesys-basic-queue.yaml  # (S114-T4)
+
+  - name: group
+    landed_in: S109
+    integration_test: handlers/identity_test.go::TestGroup_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/groups"
+      - "GET    /api/v2/groups"
+      - "GET    /api/v2/groups/{groupId}"
+      - "PUT    /api/v2/groups/{groupId}"
+      - "DELETE /api/v2/groups/{groupId}"
+    scenario_anchor: scenarios/training/genesys-rbac-and-oauth.yaml
+
+  - name: location
+    landed_in: S109
+    integration_test: handlers/identity_test.go::TestLocation_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/locations"
+      - "GET    /api/v2/locations"
+      - "GET    /api/v2/locations/{locationId}"
+      - "PATCH  /api/v2/locations/{locationId}"
+      - "DELETE /api/v2/locations/{locationId}"
+    scenario_anchor: scenarios/training/genesys-full-stack.yaml
+
+  - name: auth_role
+    landed_in: S109
+    integration_test: handlers/identity_test.go::TestAuthRole_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/authorization/roles"
+      - "GET    /api/v2/authorization/roles"
+      - "GET    /api/v2/authorization/roles/{roleId}"
+      - "PUT    /api/v2/authorization/roles/{roleId}"
+      - "PATCH  /api/v2/authorization/roles/{roleId}"
+      - "DELETE /api/v2/authorization/roles/{roleId}"
+    scenario_anchor: scenarios/training/genesys-rbac-and-oauth.yaml
+
+  - name: oauth_client
+    landed_in: S109
+    integration_test: handlers/identity_test.go::TestOAuthClient_*
+    examples_disposition: 3
+    spec_endpoints:
+      - "POST   /api/v2/oauth/clients"
+      - "GET    /api/v2/oauth/clients"
+      - "GET    /api/v2/oauth/clients/{clientId}"
+      - "PUT    /api/v2/oauth/clients/{clientId}"
+      - "DELETE /api/v2/oauth/clients/{clientId}"
+    scenario_anchor: scenarios/training/genesys-rbac-and-oauth.yaml

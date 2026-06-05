@@ -1,0 +1,1 @@
+description = "automation client (renamed)"

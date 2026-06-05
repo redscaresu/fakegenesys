@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -99,18 +100,16 @@ func (app *Application) handleMockStateService(w http.ResponseWriter, r *http.Re
 // service == "" returns the full state; otherwise just the named
 // service's block.
 //
-// Per-resource gather methods land per slice. S108 ships only the
-// schema_version + empty resource keys so topology derivation has a
-// stable shape from day one.
+// Per-resource gather methods land per slice.
 func (app *Application) collectState(service string) map[string]any {
 	full := map[string]any{
 		"schema_version": stateSchemaVersion,
 		// S109 identity:
-		"users":         []any{},
-		"groups":        []any{},
-		"locations":     []any{},
-		"auth_roles":    []any{},
-		"oauth_clients": []any{},
+		"users":         app.gatherTable("users"),
+		"groups":        app.gatherTable("groups"),
+		"locations":     app.gatherTable("locations"),
+		"auth_roles":    app.gatherTable("auth_roles"),
+		"oauth_clients": app.gatherTable("oauth_clients"),
 		// S110 routing:
 		"routing_queues":       []any{},
 		"routing_skills":       []any{},
@@ -139,4 +138,19 @@ func (app *Application) collectState(service string) map[string]any {
 		"schema_version": stateSchemaVersion,
 		"error":          "unknown service: " + service,
 	}
+}
+
+// gatherTable returns every body row in the named SQLite table as a
+// []json.RawMessage. Used by collectState to walk per-resource tables
+// without each handler file needing to register its own gatherer.
+func (app *Application) gatherTable(table string) []json.RawMessage {
+	rows, err := listAllJSON(app.repo.DB(),
+		"SELECT body FROM "+table+" ORDER BY id")
+	if err != nil {
+		return []json.RawMessage{}
+	}
+	if rows == nil {
+		return []json.RawMessage{}
+	}
+	return rows
 }
