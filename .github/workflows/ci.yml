@@ -1,0 +1,65 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./... -race
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks with custom strict config
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks detect --redact --no-banner --source=. --config .gitleaks.toml
+
+  # Aggregate handlers/... line coverage. Informational on every push;
+  # the threshold gate (≥80%) lives in TestFullCoverageAudit, exercised
+  # when the audit harness lands in a later slice.
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Emit aggregate handlers/... coverage
+        run: |
+          go test -coverprofile=cov.out -covermode=atomic ./handlers/... || true
+          if [ -f cov.out ]; then
+            total=$(go tool cover -func=cov.out | awk '/^total:/{gsub("%",""); print $3}')
+            echo "Aggregate handlers/... coverage: ${total}%"
+          else
+            echo "No coverage profile yet — handlers package is in S108 baseline state."
+          fi

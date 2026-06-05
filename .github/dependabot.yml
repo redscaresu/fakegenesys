@@ -1,0 +1,26 @@
+# Dependabot config. Two ecosystems: Go modules + GitHub Actions.
+# Weekly grouped updates to keep PR noise low; auto-merge off so a
+# human reviews every dep change.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      go-deps:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns:
+          - "*"

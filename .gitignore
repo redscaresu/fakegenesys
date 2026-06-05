@@ -1,0 +1,33 @@
+# Build artifacts (root-only — `fakegenesys` is also a directory under
+# cmd/, so we anchor the pattern to repo root with a leading slash.)
+/fakegenesys
+/cov.out
+/coverage.html
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Local dev
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Secrets — also caught by gitleaks pre-commit hook
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+
+# Terraform state from running examples locally
+examples/**/.terraform/
+examples/**/.terraform.lock.hcl
+examples/**/terraform.tfstate
+examples/**/terraform.tfstate.backup
+examples/**/terraform.tfstate.*.backup
