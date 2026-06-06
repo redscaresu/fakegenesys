@@ -15,6 +15,8 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -59,11 +61,43 @@ type tlsMITM struct {
 	httpHandler http.Handler
 }
 
-// newTLSMITM builds the proxy. Generates a fresh CA at boot.
+// newTLSMITM builds the proxy. Generates a fresh CA at boot unless one
+// is already cached on disk via newTLSMITMWithCADir.
 func newTLSMITM(handler http.Handler) (*tlsMITM, error) {
-	ca, caPEM, caKey, caKeyPEM, err := generateCA()
-	if err != nil {
-		return nil, fmt.Errorf("generate CA: %w", err)
+	return newTLSMITMWithCADir(handler, "")
+}
+
+// newTLSMITMWithCADir is the persistence-aware constructor. If caDir
+// is non-empty AND contains a readable ca-cert.pem + ca-key.pem pair,
+// the existing CA is reused so the user's keychain trust survives
+// across fakegenesys restarts. Otherwise a fresh CA is generated and
+// (if caDir is non-empty) written to caDir for subsequent boots.
+//
+// caDir == "" preserves the original ephemeral behavior — useful for
+// tests where each fakegenesys instance wants its own CA.
+func newTLSMITMWithCADir(handler http.Handler, caDir string) (*tlsMITM, error) {
+	var (
+		ca       *x509.Certificate
+		caPEM    []byte
+		caKey    *rsa.PrivateKey
+		caKeyPEM []byte
+	)
+	if caDir != "" {
+		if loaded, err := loadCAFromDir(caDir); err == nil {
+			ca, caPEM, caKey, caKeyPEM = loaded.cert, loaded.certPEM, loaded.key, loaded.keyPEM
+		}
+	}
+	if ca == nil {
+		var err error
+		ca, caPEM, caKey, caKeyPEM, err = generateCA()
+		if err != nil {
+			return nil, fmt.Errorf("generate CA: %w", err)
+		}
+		if caDir != "" {
+			if err := saveCAToDir(caDir, caPEM, caKeyPEM); err != nil {
+				log.Printf("fakegenesys-tls: save CA to %s: %v (continuing with ephemeral CA)", caDir, err)
+			}
+		}
 	}
 	return &tlsMITM{
 		ca:          ca,
@@ -73,6 +107,53 @@ func newTLSMITM(handler http.Handler) (*tlsMITM, error) {
 		leafCache:   make(map[string]*tls.Certificate),
 		httpHandler: handler,
 	}, nil
+}
+
+type loadedCA struct {
+	cert    *x509.Certificate
+	certPEM []byte
+	key     *rsa.PrivateKey
+	keyPEM  []byte
+}
+
+func loadCAFromDir(dir string) (*loadedCA, error) {
+	certPath := filepath.Join(dir, "ca-cert.pem")
+	keyPath := filepath.Join(dir, "ca-key.pem")
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return nil, err
+	}
+	keyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, err
+	}
+	certBlock, _ := pem.Decode(certPEM)
+	if certBlock == nil {
+		return nil, fmt.Errorf("decode %s: invalid PEM", certPath)
+	}
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", certPath, err)
+	}
+	keyBlock, _ := pem.Decode(keyPEM)
+	if keyBlock == nil {
+		return nil, fmt.Errorf("decode %s: invalid PEM", keyPath)
+	}
+	key, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", keyPath, err)
+	}
+	return &loadedCA{cert: cert, certPEM: certPEM, key: key, keyPEM: keyPEM}, nil
+}
+
+func saveCAToDir(dir string, certPEM, keyPEM []byte) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ca-cert.pem"), certPEM, 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "ca-key.pem"), keyPEM, 0o600)
 }
 
 // CACertPEM returns the PEM-encoded CA cert. Served by GET /mock/ca-cert.

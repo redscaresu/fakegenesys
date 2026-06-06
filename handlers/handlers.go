@@ -31,11 +31,18 @@ type Application struct {
 	dbPath string
 }
 
-// NewApplication boots an Application. dbPath is ":memory:" for
-// in-memory SQLite or a filesystem path for persistent storage. echo
-// toggles per-request method+path logging — useful for discovering
-// unimplemented endpoints during provider integration testing.
+// NewApplication boots an Application with an ephemeral TLS MITM CA
+// (regenerated each boot). Use NewApplicationWithCADir to persist the
+// CA across boots so the user's keychain trust survives.
 func NewApplication(dbPath string, echo bool) (*Application, error) {
+	return NewApplicationWithCADir(dbPath, echo, "")
+}
+
+// NewApplicationWithCADir boots an Application using a persisted CA
+// (if caDir is non-empty AND contains ca-cert.pem + ca-key.pem) or
+// generates a fresh one and saves it to caDir for subsequent boots.
+// caDir == "" preserves the original ephemeral behavior.
+func NewApplicationWithCADir(dbPath string, echo bool, caDir string) (*Application, error) {
 	repo, err := repository.New(dbPath)
 	if err != nil {
 		return nil, err
@@ -57,8 +64,9 @@ func NewApplication(dbPath string, echo bool) (*Application, error) {
 	app.RegisterRoutes(app.router)
 
 	// S116: TLS MITM proxy for HTTPS_PROXY-based provider redirection.
-	// Generated lazily — fails the whole boot if CA generation fails.
-	mitm, err := newTLSMITM(app.router)
+	// S116b: CA persisted to caDir (when set) so keychain trust
+	// survives restarts.
+	mitm, err := newTLSMITMWithCADir(app.router, caDir)
 	if err != nil {
 		_ = repo.Close()
 		return nil, fmt.Errorf("init tls mitm: %w", err)
