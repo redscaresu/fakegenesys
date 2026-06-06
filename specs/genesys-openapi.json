@@ -2274,37 +2274,20 @@
     "/api/v2/flows/jobs": {
       "post": {
         "operationId": "postFlowsJobs",
-        "summary": "Register Architect Job. Returns a URL where a file, such as an Architect flow YAML file, can be PUT which will then initiate the job.",
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "required": false,
-            "type": null,
-            "schema": {
-              "$ref": "#/definitions/RegisterArchitectJobRequest"
-            }
-          }
-        ]
+        "summary": "Create flow upload job",
+        "parameters": []
       }
     },
     "/api/v2/flows/jobs/{jobId}": {
       "get": {
         "operationId": "getFlowsJob",
-        "summary": "Fetch Architect Job Status",
+        "summary": "Get flow upload job status",
         "parameters": [
           {
             "name": "jobId",
             "in": "path",
             "required": true,
             "type": "string",
-            "schema": null
-          },
-          {
-            "name": "expand",
-            "in": "query",
-            "required": false,
-            "type": "array",
             "schema": null
           }
         ]

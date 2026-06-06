@@ -51,6 +51,29 @@ type Application struct {
 	// returns 0 when HCL says N. S122 fix.
 	groupMu      sync.Mutex
 	groupMembers map[string][]string
+
+	// flowJobMu guards the {jobID -> flowID} map. The genesyscloud
+	// flow create protocol (S122) is a 3-step upload-job dance: the
+	// provider asks for a presignedUrl, PUTs the YAML to it, then
+	// polls the job until status=Success and reads flow.id from the
+	// response. We allocate both ids at job-create time.
+	flowJobMu sync.Mutex
+	flowJobs  map[string]string
+}
+
+func (app *Application) recordFlowJob(jobID, flowID string) {
+	app.flowJobMu.Lock()
+	defer app.flowJobMu.Unlock()
+	if app.flowJobs == nil {
+		app.flowJobs = map[string]string{}
+	}
+	app.flowJobs[jobID] = flowID
+}
+
+func (app *Application) lookupFlowJob(jobID string) string {
+	app.flowJobMu.Lock()
+	defer app.flowJobMu.Unlock()
+	return app.flowJobs[jobID]
 }
 
 func (app *Application) groupMemberIDs(groupID string) []string {
