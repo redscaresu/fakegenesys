@@ -98,17 +98,19 @@ func (app *Application) handleUserRoutingLanguagesBulkPatch(w http.ResponseWrite
 
 // handleUserSearch — POST /api/v2/users/search.
 //
-// Real Genesys takes a complex search query; the provider uses it to
-// look up users by email after a destroy (to assert soft-delete
-// landed). For fakegenesys's purposes a substring match over name +
-// email across all users covers the destroy verification path.
+// The genesyscloud provider's destroy verification at
+// resource_genesyscloud_user_utils.go::getDeletedUserId posts a search
+// with two EXACT clauses (email + state=deleted) and inspects
+// `Usersearchresponse.Results`. Note: the response key is "results",
+// NOT the "entities" used by every other paged list endpoint — this is
+// the public Genesys API's actual contract.
 func (app *Application) handleUserSearch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Query []struct {
-			Type   string   `json:"type"`
-			Fields []string `json:"fields"`
-			Value  string   `json:"value"`
-			Values []string `json:"values"`
+			VarType string   `json:"type"`
+			Fields  []string `json:"fields"`
+			Value   string   `json:"value"`
+			Values  []string `json:"values"`
 		} `json:"query"`
 		PageSize   int `json:"pageSize"`
 		PageNumber int `json:"pageNumber"`
@@ -130,17 +132,33 @@ func (app *Application) handleUserSearch(w http.ResponseWriter, r *http.Request)
 			matched = append(matched, raw)
 		}
 	}
-	pagedList(w, r, matched)
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 25
+	}
+	pageNumber := req.PageNumber
+	if pageNumber <= 0 {
+		pageNumber = 1
+	}
+	body := map[string]any{
+		"results":    matched,
+		"total":      len(matched),
+		"pageCount":  1,
+		"pageNumber": pageNumber,
+		"pageSize":   pageSize,
+	}
+	writeJSONStatus(w, http.StatusOK, body)
 }
 
-// userSearchMatches: minimal AND of clauses over name/email substring.
+// userSearchMatches: minimal AND of clauses over the named fields.
 // Empty Query → match-all (provider's destroy path passes an explicit
-// email filter, so the match-all branch is reserved for harness probes).
+// email + state filter, so the match-all branch is reserved for
+// harness probes).
 func userSearchMatches(user map[string]any, query []struct {
-	Type   string   `json:"type"`
-	Fields []string `json:"fields"`
-	Value  string   `json:"value"`
-	Values []string `json:"values"`
+	VarType string   `json:"type"`
+	Fields  []string `json:"fields"`
+	Value   string   `json:"value"`
+	Values  []string `json:"values"`
 }) bool {
 	if len(query) == 0 {
 		return true
