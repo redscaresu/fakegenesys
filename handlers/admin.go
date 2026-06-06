@@ -38,7 +38,23 @@ func (app *Application) registerAdminRoutes(r chi.Router) {
 		mr.Post("/restore", app.handleMockRestore)
 		mr.Get("/state", app.handleMockState)
 		mr.Get("/state/{service}", app.handleMockStateService)
+		mr.Get("/ca-cert", app.handleMockCACert)
 	})
+}
+
+// handleMockCACert returns the PEM-encoded boot-time CA cert that signs
+// every leaf the TLS MITM proxy issues. Harnesses fetch it at runtime
+// and write it to SSL_CERT_FILE so Go's TLS stack trusts our MITM chain
+// without bundling a pre-baked cert. S116.
+func (app *Application) handleMockCACert(w http.ResponseWriter, _ *http.Request) {
+	if app.mitm == nil {
+		writeError(w, http.StatusServiceUnavailable, "mitm.unavailable",
+			"TLS MITM proxy not initialised")
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-pem-file")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(app.mitm.CACertPEM())
 }
 
 func (app *Application) handleMockReset(w http.ResponseWriter, _ *http.Request) {

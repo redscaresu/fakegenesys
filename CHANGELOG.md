@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (S116)
+- **TLS MITM CONNECT proxy** on `:8443` (`--tls-port`; set `0` to disable). The `mypurecloud/genesyscloud` Terraform provider ignores `GENESYSCLOUD_GATEWAY_*` env vars and hardcodes `login.<region>.pure.cloud`. The proxy makes `HTTPS_PROXY=http://localhost:8443` route every provider call (auth + API) through fakegenesys without modifying the provider.
+- **Boot-time CA** generated in `NewApplication` (self-signed, 10-yr, 2048-bit RSA). Leaf certs dynamically issued per-hostname (SAN'd for the requested host) and cached for process lifetime.
+- **`GET /mock/ca-cert`** returns the PEM CA so harnesses can write it to `SSL_CERT_FILE` and trust the MITM chain at runtime.
+- **Tests** (`handlers/tls_mitm_test.go`): CA endpoint shape; full HTTPS_PROXY round-trip (`POST https://api.mypurecloud.com/login/oauth/token` then `GET https://api.mypurecloud.com/api/v2/users`); non-CONNECT method returns 405.
+- AGENTS.md § "TLS MITM proxy" documents the wire flow + ports + cert lifecycle.
+
 ### Changed / Fixed (S113)
 - **Restore tmpPath leak on copyFile failure**: all error paths in `repository.Restore` now `os.Remove(tmpPath)` to avoid leaving stale staging files on disk.
 - **Restore corruption on Rename failure**: snapshot the pre-Restore bytes into memory BEFORE closing the existing handle; on rename failure, write the snapshot back and reopen so the repo rolls back to the pre-Restore state instead of leaving a dead `r.db`.
