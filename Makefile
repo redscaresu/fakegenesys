@@ -1,4 +1,4 @@
-.PHONY: build test test-race test-short test-coverage vet clean run install-hooks specs-refresh up
+.PHONY: build test test-race test-short test-coverage vet clean run install-hooks specs-refresh
 
 # install-hooks wires the tracked hook installer at .githooks/ via
 # core.hooksPath. Idempotent — re-running is a no-op. Run once after
@@ -34,11 +34,8 @@ vet:
 clean:
 	rm -f fakegenesys cov.out coverage.html
 
-# `make run` and `make up` are aliases — same as fakeaws / fakegcp.
 run: build
 	./fakegenesys --port 8083
-
-up: run
 
 # specs-refresh re-downloads the Genesys Cloud OpenAPI spec and filters
 # it down to the endpoints fakegenesys implements (identity / routing /
