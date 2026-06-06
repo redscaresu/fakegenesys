@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -20,6 +21,100 @@ func (app *Application) registerGroupRoutes(r chi.Router) {
 	r.Get("/groups/{groupId}", app.handleGroupGet)
 	r.Put("/groups/{groupId}", app.handleGroupUpdate)
 	r.Delete("/groups/{groupId}", app.handleGroupDelete)
+	// S122: group subresources. The genesyscloud provider's group Read
+	// path calls /individuals (member list) unconditionally; failing
+	// that fails the entire group apply. Voicemail userpolicy is
+	// followed by the group-update path. Both are minimal stubs.
+	r.Get("/groups/{groupId}/individuals", app.handleGroupIndividuals)
+	r.Get("/groups/{groupId}/voicemail", app.handleGroupVoicemail)
+	r.Patch("/groups/{groupId}/voicemail", app.handleGroupVoicemailPatch)
+	// S122: POST /groups/{id}/members is how the provider associates
+	// users with a group on create. Body is a list of {id, version}.
+	// We acknowledge with 204 (no body).
+	r.Post("/groups/{groupId}/members", app.handleGroupMembersAdd)
+	r.Delete("/groups/{groupId}/members", app.handleGroupMembersDelete)
+	// S122: voicemail-side group policy. The provider's
+	// updateGroupVoicemailPolicy PATCHes a separate URL from the
+	// /groups/{id}/voicemail one (Genesys split the namespace).
+	r.Get("/voicemail/groups/{groupId}/policy", app.handleGroupVoicemail)
+	r.Patch("/voicemail/groups/{groupId}/policy", app.handleGroupVoicemailPatch)
+}
+
+type groupMembersAddBody struct {
+	MemberIDs []string `json:"memberIds"`
+	Version   int      `json:"version,omitempty"`
+}
+
+func (app *Application) handleGroupMembersAdd(w http.ResponseWriter, r *http.Request) {
+	groupID := chi.URLParam(r, "groupId")
+	var body groupMembersAddBody
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	for _, uid := range body.MemberIDs {
+		if uid != "" {
+			app.addGroupMember(groupID, uid)
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (app *Application) handleGroupMembersDelete(w http.ResponseWriter, r *http.Request) {
+	groupID := chi.URLParam(r, "groupId")
+	// Bulk delete via query param: ?id=u1,u2,...
+	for _, uid := range strings.Split(r.URL.Query().Get("id"), ",") {
+		uid = strings.TrimSpace(uid)
+		if uid != "" {
+			app.removeGroupMember(groupID, uid)
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (app *Application) handleGroupIndividuals(w http.ResponseWriter, r *http.Request) {
+	groupID := chi.URLParam(r, "groupId")
+	members := app.groupMemberIDs(groupID)
+	entities := make([]map[string]any, 0, len(members))
+	for _, uid := range members {
+		entities = append(entities, map[string]any{
+			"id":      uid,
+			"selfUri": "/api/v2/users/" + uid,
+		})
+	}
+	body := map[string]any{
+		"entities":   entities,
+		"total":      len(entities),
+		"pageCount":  1,
+		"pageNumber": 1,
+		"pageSize":   25,
+	}
+	writeJSONStatus(w, http.StatusOK, body)
+}
+
+func defaultGroupVoicemailPolicy() map[string]any {
+	return map[string]any{
+		"alertTimeoutSeconds":    30,
+		"sendEmailNotifications": true,
+		"pinConfiguration": map[string]any{
+			"minimumLength": 4,
+			"maximumLength": 8,
+		},
+	}
+}
+
+func (app *Application) handleGroupVoicemail(w http.ResponseWriter, _ *http.Request) {
+	writeJSONStatus(w, http.StatusOK, defaultGroupVoicemailPolicy())
+}
+
+func (app *Application) handleGroupVoicemailPatch(w http.ResponseWriter, r *http.Request) {
+	body, err := decodeJSONBody(r)
+	if err != nil {
+		writeBadRequest(w, "body: "+err.Error())
+		return
+	}
+	merged := defaultGroupVoicemailPolicy()
+	for k, v := range body {
+		merged[k] = v
+	}
+	writeJSONStatus(w, http.StatusOK, merged)
 }
 
 func (app *Application) handleGroupCreate(w http.ResponseWriter, r *http.Request) {

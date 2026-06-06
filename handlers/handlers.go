@@ -44,6 +44,47 @@ type Application struct {
 	subresMu      sync.Mutex
 	userSkills    map[string][]userProficiencyRef
 	userLanguages map[string][]userProficiencyRef
+
+	// groupMu guards the per-group membership map. The provider's
+	// readGroup polls /individuals until its count matches the HCL's
+	// member_ids; the smoke test apply hangs forever if /individuals
+	// returns 0 when HCL says N. S122 fix.
+	groupMu      sync.Mutex
+	groupMembers map[string][]string
+}
+
+func (app *Application) groupMemberIDs(groupID string) []string {
+	app.groupMu.Lock()
+	defer app.groupMu.Unlock()
+	out := make([]string, len(app.groupMembers[groupID]))
+	copy(out, app.groupMembers[groupID])
+	return out
+}
+
+func (app *Application) addGroupMember(groupID, uid string) {
+	app.groupMu.Lock()
+	defer app.groupMu.Unlock()
+	if app.groupMembers == nil {
+		app.groupMembers = map[string][]string{}
+	}
+	for _, existing := range app.groupMembers[groupID] {
+		if existing == uid {
+			return
+		}
+	}
+	app.groupMembers[groupID] = append(app.groupMembers[groupID], uid)
+}
+
+func (app *Application) removeGroupMember(groupID, uid string) {
+	app.groupMu.Lock()
+	defer app.groupMu.Unlock()
+	filtered := app.groupMembers[groupID][:0]
+	for _, c := range app.groupMembers[groupID] {
+		if c != uid {
+			filtered = append(filtered, c)
+		}
+	}
+	app.groupMembers[groupID] = filtered
 }
 
 func (app *Application) queueWrapupCodes(queueID string) []string {
