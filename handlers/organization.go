@@ -101,6 +101,16 @@ func (app *Application) handleAuthorizationDivisionsHome(w http.ResponseWriter, 
 // handleTokensMe — returns the current token's owner. SDK probes
 // for permissions during connection setup. Stub returns a synthetic
 // admin user with broad permissions.
+//
+// CRITICAL: the response MUST include oAuthClient.organization.id.
+// The Terraform provider's createOAuthClient calls
+// updateTerraformUserWithRole at resource_genesyscloud_oauth_client.go:213
+// which does `if *tokenInfo.OAuthClient.Organization.Id != "purecloud-builtin"`
+// — a nil OAuthClient or Organization segfaults the plugin during
+// EVERY oauth_client create. Returning "purecloud-builtin" routes the
+// provider down its safe role-assignment path; any other value
+// triggers an additional /users/me + role-assignment probe chain that
+// we'd also need to mock.
 func (app *Application) handleTokensMe(w http.ResponseWriter, _ *http.Request) {
 	body := map[string]any{
 		"authorizedScope": []string{},
@@ -111,6 +121,15 @@ func (app *Application) handleTokensMe(w http.ResponseWriter, _ *http.Request) {
 		"organization": map[string]any{
 			"id":   fakegenesysOrgID,
 			"name": "fakegenesys",
+		},
+		// S119: oauth_client crash fix.
+		"oAuthClient": map[string]any{
+			"id":   "fakegenesys-oauth-builtin",
+			"name": "fakegenesys terraform client",
+			"organization": map[string]any{
+				"id":   "purecloud-builtin",
+				"name": "fakegenesys",
+			},
 		},
 	}
 	w.Header().Set("Content-Type", "application/json")
