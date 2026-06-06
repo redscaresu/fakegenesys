@@ -3390,7 +3390,7 @@
     "/api/v2/groups/{groupId}/individuals": {
       "get": {
         "operationId": "getGroupIndividuals",
-        "summary": "Get all individuals associated with the group",
+        "summary": "List group members",
         "parameters": [
           {
             "name": "groupId",
@@ -3403,47 +3403,6 @@
       }
     },
     "/api/v2/groups/{groupId}/members": {
-      "get": {
-        "operationId": "getGroupMembers",
-        "summary": "Get group members, includes individuals, owners, and dynamically included people",
-        "parameters": [
-          {
-            "name": "groupId",
-            "in": "path",
-            "required": true,
-            "type": "string",
-            "schema": null
-          },
-          {
-            "name": "pageSize",
-            "in": "query",
-            "required": false,
-            "type": "integer",
-            "schema": null
-          },
-          {
-            "name": "pageNumber",
-            "in": "query",
-            "required": false,
-            "type": "integer",
-            "schema": null
-          },
-          {
-            "name": "sortOrder",
-            "in": "query",
-            "required": false,
-            "type": "string",
-            "schema": null
-          },
-          {
-            "name": "expand",
-            "in": "query",
-            "required": false,
-            "type": "array",
-            "schema": null
-          }
-        ]
-      },
       "post": {
         "operationId": "postGroupMembers",
         "summary": "Add members",
@@ -3454,15 +3413,6 @@
             "required": true,
             "type": "string",
             "schema": null
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "type": null,
-            "schema": {
-              "$ref": "#/definitions/GroupMembersUpdate"
-            }
           }
         ]
       },
@@ -3473,13 +3423,6 @@
           {
             "name": "groupId",
             "in": "path",
-            "required": true,
-            "type": "string",
-            "schema": null
-          },
-          {
-            "name": "ids",
-            "in": "query",
             "required": true,
             "type": "string",
             "schema": null
@@ -3503,6 +3446,34 @@
             "name": "fields",
             "in": "query",
             "required": false,
+            "type": "string",
+            "schema": null
+          }
+        ]
+      }
+    },
+    "/api/v2/groups/{groupId}/voicemail": {
+      "get": {
+        "operationId": "getGroupVoicemail",
+        "summary": "Get group voicemail policy",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "schema": null
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "patchGroupVoicemail",
+        "summary": "Update group voicemail policy",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
             "type": "string",
             "schema": null
           }
@@ -8174,6 +8145,34 @@
           },
           {
             "name": "verifierId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "schema": null
+          }
+        ]
+      }
+    },
+    "/api/v2/voicemail/groups/{groupId}/policy": {
+      "get": {
+        "operationId": "getVoicemailGroupPolicy",
+        "summary": "Get group voicemail policy",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "schema": null
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "patchVoicemailGroupPolicy",
+        "summary": "Update group voicemail policy",
+        "parameters": [
+          {
+            "name": "groupId",
             "in": "path",
             "required": true,
             "type": "string",
