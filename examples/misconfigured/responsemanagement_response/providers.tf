@@ -7,14 +7,13 @@ terraform {
   }
 }
 
-# Point the provider at fakegenesys. The genesyscloud provider's
-# `genesyscloud_sdk_debug_uri` attribute lets us override the SDK
-# gateway hostname; combined with placeholder credentials, this is
-# how the smoke harness drives the real provider against the mock.
+# The provider talks to fakegenesys via the GENESYSCLOUD_GATEWAY_*
+# env vars (PROTOCOL, HOST, PORT) — the provider does NOT accept HCL
+# endpoint overrides. For the smoke harness, those env vars are set
+# by examples/provider_smoke_test.go when it spawns the per-test
+# fakegenesys instance.
 provider "genesyscloud" {
-  oauthclient_id                = "fake-client-id"
-  oauthclient_secret            = "fake-client-secret"
-  aws_region                    = "us-east-1"
-  sdk_debug                     = false
-  genesyscloud_alt_gateway_host = "http://localhost:8083"
+  oauthclient_id     = "fake-client-id"
+  oauthclient_secret = "fake-client-secret"
+  aws_region         = "us-east-1"
 }

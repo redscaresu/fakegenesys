@@ -71,10 +71,18 @@ func (s *tokenStore) Valid(tok string) bool {
 	return true
 }
 
-// registerOAuthRoutes attaches POST /oauth/token. The route lives
-// outside the bearer-auth group because it's the bootstrap endpoint.
+// registerOAuthRoutes attaches the OAuth token endpoint at every path
+// the Genesys Go SDK and Terraform provider may hit. The provider
+// uses /login/oauth/token (the real login.mypurecloud.com subdomain
+// path), while bare REST callers use /oauth/token. fakegenesys
+// collapses both into the same handler since it can't distinguish
+// subdomains on one port.
+//
+// All token routes live outside the bearer-auth group — they're the
+// bootstrap endpoints.
 func (app *Application) registerOAuthRoutes(r chi.Router) {
 	r.Post("/oauth/token", app.handleOAuthToken)
+	r.Post("/login/oauth/token", app.handleOAuthToken)
 }
 
 // handleOAuthToken implements the client_credentials grant per
