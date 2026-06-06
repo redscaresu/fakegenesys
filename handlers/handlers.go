@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -29,6 +30,54 @@ type Application struct {
 	mitm   *tlsMITM
 	echo   bool
 	dbPath string
+
+	// queueWrapupAssoc tracks {queueID -> [codeID]} in-process. The
+	// Genesys API exposes queue ↔ wrapup-code associations as a
+	// subresource (POST /queues/{id}/wrapupcodes, etc.). Kept off the
+	// SQLite layer for now — lossy across restarts but sufficient
+	// within a single infrafactory run. See routing_queue.go for usage.
+	wrapupMu      sync.Mutex
+	queueWrapups  map[string][]string
+
+	// subresMu guards the per-user subresource maps (routingskills,
+	// routinglanguages). Same pattern + same caveats as queueWrapups.
+	subresMu      sync.Mutex
+	userSkills    map[string][]userProficiencyRef
+	userLanguages map[string][]userProficiencyRef
+}
+
+func (app *Application) queueWrapupCodes(queueID string) []string {
+	app.wrapupMu.Lock()
+	defer app.wrapupMu.Unlock()
+	out := make([]string, len(app.queueWrapups[queueID]))
+	copy(out, app.queueWrapups[queueID])
+	return out
+}
+
+func (app *Application) addQueueWrapupCode(queueID, codeID string) {
+	app.wrapupMu.Lock()
+	defer app.wrapupMu.Unlock()
+	if app.queueWrapups == nil {
+		app.queueWrapups = map[string][]string{}
+	}
+	for _, existing := range app.queueWrapups[queueID] {
+		if existing == codeID {
+			return
+		}
+	}
+	app.queueWrapups[queueID] = append(app.queueWrapups[queueID], codeID)
+}
+
+func (app *Application) removeQueueWrapupCode(queueID, codeID string) {
+	app.wrapupMu.Lock()
+	defer app.wrapupMu.Unlock()
+	filtered := app.queueWrapups[queueID][:0]
+	for _, c := range app.queueWrapups[queueID] {
+		if c != codeID {
+			filtered = append(filtered, c)
+		}
+	}
+	app.queueWrapups[queueID] = filtered
 }
 
 // NewApplication boots an Application with an ephemeral TLS MITM CA
@@ -128,8 +177,12 @@ func (app *Application) RegisterRoutes(r chi.Router) {
 	// NotFound would bypass the auth chain).
 	r.Route("/api/v2", func(ar chi.Router) {
 		ar.Use(app.bearerAuth)
+		// S116c: org probe — SDK calls /api/v2/organizations/me
+		// immediately after auth.
+		app.registerOrganizationRoutes(ar)
 		// S109 identity:
 		app.registerUserRoutes(ar)
+		app.registerUserSubresourceRoutes(ar)
 		app.registerGroupRoutes(ar)
 		app.registerLocationRoutes(ar)
 		app.registerAuthRoleRoutes(ar)
@@ -140,6 +193,9 @@ func (app *Application) RegisterRoutes(r chi.Router) {
 		app.registerRoutingWrapupcodeRoutes(ar)
 		app.registerRoutingLanguageRoutes(ar)
 		app.registerRoutingUtilizationRoutes(ar)
+		// S116c: voicemail userpolicies — provider read-after-create
+		// hits /api/v2/voicemail/userpolicies/{userId}.
+		app.registerVoicemailRoutes(ar)
 		// S111 architect / responsemanagement / IDP.
 		// Datatable routes register before flow routes so chi matches
 		// the more-specific /flows/datatables prefix first.

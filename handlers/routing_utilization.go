@@ -22,6 +22,32 @@ func (app *Application) registerRoutingUtilizationRoutes(r chi.Router) {
 	r.Get("/routing/utilization", app.handleRoutingUtilizationGet)
 	r.Put("/routing/utilization", app.handleRoutingUtilizationPut)
 	r.Delete("/routing/utilization", app.handleRoutingUtilizationDelete)
+	// S116c: per-user routing utilization override. The genesyscloud
+	// provider's readUser calls
+	// /api/v2/routing/users/{userId}/utilization unconditionally;
+	// without a 200 the apply hangs in retry. We return the same
+	// default singleton shape — a user with no override matches the
+	// global default.
+	r.Get("/routing/users/{userId}/utilization", app.handleUserRoutingUtilizationGet)
+	r.Put("/routing/users/{userId}/utilization", app.handleUserRoutingUtilizationPut)
+	r.Delete("/routing/users/{userId}/utilization", app.handleUserRoutingUtilizationDelete)
+}
+
+func (app *Application) handleUserRoutingUtilizationGet(w http.ResponseWriter, _ *http.Request) {
+	writeJSONStatus(w, http.StatusOK, defaultUtilization())
+}
+
+func (app *Application) handleUserRoutingUtilizationPut(w http.ResponseWriter, r *http.Request) {
+	body, err := decodeJSONBody(r)
+	if err != nil {
+		writeBadRequest(w, "body: "+err.Error())
+		return
+	}
+	writeJSONStatus(w, http.StatusOK, body)
+}
+
+func (app *Application) handleUserRoutingUtilizationDelete(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func defaultUtilization() map[string]any {

@@ -1,0 +1,138 @@
+package handlers
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+)
+
+// organization endpoint — minimal stub for the post-auth org probe the
+// Genesys SDK performs immediately after issuing a token. Without it,
+// every API call (including the first GET /api/v2/users) fails with
+// "API Error: 501" because the SDK can't establish the tenant context.
+//
+// Returns a fixed organization document. Real Genesys's response is
+// richer; we model just the fields the SDK reads at probe time.
+
+const (
+	fakegenesysOrgID          = "fakegenesys-org-00000000-0000-0000-0000-000000000000"
+	fakegenesysHomeDivisionID = "fakegenesys-home-div-00000000-0000-0000-0000-000000000000"
+)
+
+func (app *Application) registerOrganizationRoutes(r chi.Router) {
+	r.Get("/organizations/me", app.handleOrganizationsMe)
+	// S116c: post-auth SDK probes. The Go SDK calls a handful of org-
+	// info endpoints immediately after token issuance to set up the
+	// client context. Each gets a minimal stub.
+	r.Get("/authorization/products", app.handleAuthorizationProducts)
+	r.Get("/authorization/divisions", app.handleAuthorizationDivisions)
+	r.Get("/authorization/divisions/home", app.handleAuthorizationDivisionsHome)
+	r.Get("/tokens/me", app.handleTokensMe)
+}
+
+// handleAuthorizationProducts — list of Genesys product entitlements
+// the org has. SDK probes this to gate feature paths. Returning a
+// broad list is safe; the provider only checks for the presence of
+// specific products it needs.
+//
+// CRITICAL: the response MUST include "total" (int). The Genesys
+// Terraform provider's getAuthorizationProducts at provider.go:224
+// does `make([]string, *productEntities.Total)` — a nil Total nukes
+// the plugin with a segfault before the first resource is created.
+func (app *Application) handleAuthorizationProducts(w http.ResponseWriter, _ *http.Request) {
+	entities := []map[string]any{
+		{"id": "useCustomerEngagement", "name": "Customer Engagement"},
+		{"id": "useDirectory", "name": "Directory"},
+		{"id": "useRouting", "name": "Routing"},
+		{"id": "useArchitect", "name": "Architect"},
+		{"id": "useResponseManagement", "name": "Response Management"},
+		{"id": "useOAuth", "name": "OAuth"},
+	}
+	body := map[string]any{
+		"entities":   entities,
+		"total":      len(entities),
+		"pageCount":  1,
+		"pageNumber": 1,
+		"pageSize":   25,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+// handleAuthorizationDivisions — divisions are Genesys's RBAC scopes.
+// Stub returns one Home division which most queries default to.
+func (app *Application) handleAuthorizationDivisions(w http.ResponseWriter, _ *http.Request) {
+	homeID := fakegenesysHomeDivisionID
+	body := map[string]any{
+		"entities": []map[string]any{
+			{
+				"id":          homeID,
+				"name":        "Home",
+				"description": "Home division",
+				"homeDivision": true,
+				"selfUri":      "/api/v2/authorization/divisions/" + homeID,
+			},
+		},
+		"pageCount": 1, "pageNumber": 1, "pageSize": 25, "total": 1,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+// handleAuthorizationDivisionsHome — the SDK uses this shortcut to
+// resolve the Home division id during provider config.
+func (app *Application) handleAuthorizationDivisionsHome(w http.ResponseWriter, _ *http.Request) {
+	homeID := fakegenesysHomeDivisionID
+	body := map[string]any{
+		"id":           homeID,
+		"name":         "Home",
+		"description":  "Home division",
+		"homeDivision": true,
+		"selfUri":      "/api/v2/authorization/divisions/" + homeID,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+// handleTokensMe — returns the current token's owner. SDK probes
+// for permissions during connection setup. Stub returns a synthetic
+// admin user with broad permissions.
+func (app *Application) handleTokensMe(w http.ResponseWriter, _ *http.Request) {
+	body := map[string]any{
+		"authorizedScope": []string{},
+		"homeOrganization": map[string]any{
+			"id":   fakegenesysOrgID,
+			"name": "fakegenesys",
+		},
+		"organization": map[string]any{
+			"id":   fakegenesysOrgID,
+			"name": "fakegenesys",
+		},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+func (app *Application) handleOrganizationsMe(w http.ResponseWriter, _ *http.Request) {
+	body := map[string]any{
+		"id":                fakegenesysOrgID,
+		"name":              "fakegenesys",
+		"thirdPartyOrgName": "fakegenesys",
+		"defaultLanguage":   "en-us",
+		"defaultCountryCode": "US",
+		"domain":            "mypurecloud.com",
+		"version":           1,
+		"state":             "active",
+		"selfUri":           "/api/v2/organizations/" + fakegenesysOrgID,
+		"features":          map[string]any{},
+		"productPlatform":   "purecloud_voice",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(body)
+}

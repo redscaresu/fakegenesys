@@ -14,7 +14,10 @@ func TestRoutingQueue_Lifecycle(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/routing/queues",
 		map[string]any{"name": "Support"}, &created)
-	if resp.StatusCode != http.StatusCreated {
+	// S116c: queue create returns 200 (matches real Genesys + the
+	// genesyscloud provider's StatusOK check). Other routing resources
+	// still return 201.
+	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("create: status %d", resp.StatusCode)
 	}
 	id, _ := created["id"].(string)

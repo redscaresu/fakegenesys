@@ -46,6 +46,19 @@ func (app *Application) handleUserCreate(w http.ResponseWriter, r *http.Request)
 	body["version"] = 1
 	body["dateCreated"] = nowZ()
 	body["dateModified"] = body["dateCreated"]
+	// S116c: the genesyscloud Terraform provider's readUser dereferences
+	// currentUser.Division.Id unconditionally
+	// (resource_genesyscloud_user.go:166). A user without a division
+	// crashes the plugin process during the read-after-create.
+	// Default to the Home division id used by our authorization stubs
+	// so any user creation flow yields a state-compatible read.
+	if body["division"] == nil {
+		body["division"] = map[string]any{
+			"id":      fakegenesysHomeDivisionID,
+			"name":    "Home",
+			"selfUri": "/api/v2/authorization/divisions/" + fakegenesysHomeDivisionID,
+		}
+	}
 	enc, _ := json.Marshal(body)
 	_, err = app.repo.DB().Exec(
 		`INSERT INTO users(id, email, name, state, body) VALUES (?, ?, ?, ?, ?)`,
