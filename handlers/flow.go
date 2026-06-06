@@ -43,11 +43,80 @@ func (app *Application) registerFlowRoutes(r chi.Router) {
 	r.Post("/flows/actions/unlock", app.handleFlowUnlock)
 	r.Post("/flows/actions/revert", app.handleFlowUnlock)     // alias
 	r.Post("/flows/actions/deactivate", app.handleFlowUnlock) // alias
+	// S122: the upload-job protocol the genesyscloud provider uses for
+	// `genesyscloud_flow`. The provider does not POST the flow body
+	// directly to /flows; it asks the API for a presignedUrl, uploads
+	// the YAML there, then polls the job until success. fakegenesys
+	// fakes this by returning an in-process upload URL on the same
+	// port; the upload handler stores the bytes and the job-poll
+	// returns success + a real flow.id allocated at job-create time.
+	r.Post("/flows/jobs", app.handleFlowJobCreate)
+	r.Get("/flows/jobs/{jobId}", app.handleFlowJobGet)
 	r.Post("/flows", app.handleFlowCreate)
 	r.Get("/flows", app.handleFlowList)
 	r.Get("/flows/{flowId}", app.handleFlowGet)
 	r.Put("/flows/{flowId}", app.handleFlowUpdate)
 	r.Delete("/flows/{flowId}", app.handleFlowDelete)
+}
+
+// handleFlowJobCreate kicks off the multi-step flow upload. We allocate
+// both a job id and a flow id eagerly so the polling phase has a real
+// flow to return. The presignedUrl points back at fakegenesys's
+// /mock/flow-upload/{jobId} endpoint (registered out-of-band in
+// admin.go so it's reachable without bearer auth — matching real
+// Genesys's S3 pattern where the upload URL is signed and doesn't take
+// the Bearer token).
+func (app *Application) handleFlowJobCreate(w http.ResponseWriter, r *http.Request) {
+	jobID := newID()
+	flowID := newID()
+	// The infrafactory cloudEnv NO_PROXY includes localhost + 127.0.0.1
+	// so the upload won't try to go back through the MITM proxy.
+	uploadURL := "http://localhost:8083/mock/flow-upload/" + jobID
+	// Track the (jobID -> flowID) pairing so the eventual GET can
+	// return the right flow.
+	app.recordFlowJob(jobID, flowID)
+	// Also pre-create the flow row so subsequent GET /flows/{id}
+	// after the job succeeds finds it.
+	flowBody := map[string]any{
+		"id":      flowID,
+		"name":    "harness-flow-" + flowID,
+		"type":    "inboundCall",
+		"state":   "unpublished",
+		"selfUri": "/api/v2/flows/" + flowID,
+		"division": map[string]any{
+			"id":   fakegenesysHomeDivisionID,
+			"name": "Home",
+		},
+	}
+	enc, _ := json.Marshal(flowBody)
+	_, _ = app.repo.DB().Exec(
+		`INSERT INTO flows(id, name, type, state, body) VALUES (?, ?, ?, ?, ?)`,
+		flowID, flowBody["name"], "inboundCall", "unpublished", string(enc))
+	writeJSONStatus(w, http.StatusOK, map[string]any{
+		"id":           jobID,
+		"presignedUrl": uploadURL,
+		"headers": map[string]string{
+			"Content-Type": "application/octet-stream",
+		},
+	})
+}
+
+func (app *Application) handleFlowJobGet(w http.ResponseWriter, r *http.Request) {
+	jobID := chi.URLParam(r, "jobId")
+	flowID := app.lookupFlowJob(jobID)
+	if flowID == "" {
+		writeError(w, http.StatusNotFound, "not_found", "no such job")
+		return
+	}
+	writeJSONStatus(w, http.StatusOK, map[string]any{
+		"id":     jobID,
+		"status": "Success",
+		"flow": map[string]any{
+			"id":      flowID,
+			"selfUri": "/api/v2/flows/" + flowID,
+		},
+		"messages": []any{},
+	})
 }
 
 func (app *Application) handleFlowCreate(w http.ResponseWriter, r *http.Request) {

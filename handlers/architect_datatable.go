@@ -51,6 +51,18 @@ func (app *Application) handleDatatableCreate(w http.ResponseWriter, r *http.Req
 	id := newID()
 	body["id"] = id
 	body["selfUri"] = "/api/v2/flows/datatables/" + id
+	// S122: the genesyscloud provider's readArchitectDatatable does
+	// `*datatable.Division.Id` unconditionally
+	// (resource_genesyscloud_architect_datatable.go:121). Without a
+	// default division the plugin segfaults during the read-after-
+	// create. Mirrors the user create fix from S116c.
+	if body["division"] == nil {
+		body["division"] = map[string]any{
+			"id":      fakegenesysHomeDivisionID,
+			"name":    "Home",
+			"selfUri": "/api/v2/authorization/divisions/" + fakegenesysHomeDivisionID,
+		}
+	}
 	enc, _ := json.Marshal(body)
 	_, err = app.repo.DB().Exec(
 		`INSERT INTO architect_datatables(id, name, body) VALUES (?, ?, ?)`,

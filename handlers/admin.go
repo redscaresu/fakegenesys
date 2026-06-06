@@ -39,7 +39,17 @@ func (app *Application) registerAdminRoutes(r chi.Router) {
 		mr.Get("/state", app.handleMockState)
 		mr.Get("/state/{service}", app.handleMockStateService)
 		mr.Get("/ca-cert", app.handleMockCACert)
+		// S122: flow upload endpoint. The genesyscloud provider gets a
+		// presignedUrl back from POST /api/v2/flows/jobs and PUTs the
+		// YAML there. We accept any bytes and 200 — no parsing.
+		mr.Put("/flow-upload/{jobId}", app.handleFlowUpload)
 	})
+}
+
+func (app *Application) handleFlowUpload(w http.ResponseWriter, _ *http.Request) {
+	// Accept any payload; do not parse. The smoke harness verifies the
+	// flow exists after the upload, not the YAML's correctness.
+	w.WriteHeader(http.StatusOK)
 }
 
 // handleMockCACert returns the PEM-encoded boot-time CA cert that signs
