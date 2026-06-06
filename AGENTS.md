@@ -82,6 +82,29 @@ artifact is small enough to diff in PR review.
    the second line of defense. Spec cross-reference catches typos;
    smoke harness catches behavioral divergence.
 
+## TLS MITM proxy (S116, for HTTPS_PROXY-based provider redirection)
+
+The `mypurecloud/genesyscloud` Terraform provider's auth path ignores
+`GENESYSCLOUD_GATEWAY_*` env vars and hardcodes `login.<region>.pure.cloud`.
+To make the provider hit fakegenesys without modifying it, the binary
+runs a CONNECT-proxy on a second listener (default `:8443`) that
+MITM-terminates client TLS using leaf certs dynamically signed by a
+boot-time self-signed CA. Decrypted HTTP traffic flows through the same
+chi router the plain `:8083` listener uses.
+
+Boot flow:
+1. `NewApplication` generates a fresh CA in-memory (10-yr validity, 2048-bit RSA).
+2. `cmd/fakegenesys/main.go` starts the proxy goroutine on `:8443` (overridable via `--tls-port`; `--tls-port=0` disables).
+3. Harness clients fetch the PEM-encoded CA via `GET /mock/ca-cert` and write it to `SSL_CERT_FILE` so Go's TLS stack trusts the leaf chain.
+4. Client sets `HTTPS_PROXY=http://localhost:8443`. The proxy handles `CONNECT api.mypurecloud.com:443`, MITM-handshakes with a leaf cert SAN'd for that hostname, then serves the decrypted request through the chi router. No upstream forwarding — we ARE the upstream.
+
+Leaf certs are cached by hostname for process lifetime. The CA, leaf
+generator, and oneConnListener bridge live in `handlers/tls_mitm.go`;
+the `/mock/ca-cert` endpoint lives in `handlers/admin.go`. Tests in
+`handlers/tls_mitm_test.go` cover CA endpoint shape + the full
+HTTPS_PROXY round-trip (token mint then API call against
+`https://api.mypurecloud.com`).
+
 ## Provider smoke harness
 
 Every resource ships three example directories:

@@ -8,6 +8,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -20,11 +21,12 @@ import (
 )
 
 // Application is the top-level wiring struct. Holds the chi router,
-// the repository handle, and the OAuth token store.
+// the repository handle, the OAuth token store, and the TLS MITM proxy.
 type Application struct {
 	router *chi.Mux
 	repo   *repository.Repository
 	tokens *tokenStore
+	mitm   *tlsMITM
 	echo   bool
 	dbPath string
 }
@@ -53,8 +55,21 @@ func NewApplication(dbPath string, echo bool) (*Application, error) {
 		app.router.Use(echoMiddleware)
 	}
 	app.RegisterRoutes(app.router)
+
+	// S116: TLS MITM proxy for HTTPS_PROXY-based provider redirection.
+	// Generated lazily — fails the whole boot if CA generation fails.
+	mitm, err := newTLSMITM(app.router)
+	if err != nil {
+		_ = repo.Close()
+		return nil, fmt.Errorf("init tls mitm: %w", err)
+	}
+	app.mitm = mitm
 	return app, nil
 }
+
+// MITM exposes the TLS proxy for the cmd binary (to call
+// ListenAndServeTLS) and for tests.
+func (app *Application) MITM() *tlsMITM { return app.mitm }
 
 // Router returns the chi router for serving HTTP traffic.
 func (app *Application) Router() http.Handler { return app.router }
