@@ -38,6 +38,82 @@ func (app *Application) registerRoutingQueueRoutes(r chi.Router) {
 	r.Post("/routing/queues/{queueId}/members", app.handleRoutingQueueMembersAdd)
 	r.Get("/routing/queues/{queueId}/members", app.handleRoutingQueueMembersList)
 	r.Patch("/routing/queues/{queueId}/members", app.handleRoutingQueueMembersReplace)
+	// S116c: per-queue wrapup-code associations. The genesyscloud
+	// provider's updateQueueWrapupCodes GETs this endpoint before each
+	// associate/disassociate diff; a 501 here aborts the apply with
+	// "failed to query wrapup codes for queue …". Persisted in-process
+	// on the Application (lossy across restarts, sufficient within one
+	// infrafactory run).
+	r.Get("/routing/queues/{queueId}/wrapupcodes", app.handleRoutingQueueWrapupcodesList)
+	r.Post("/routing/queues/{queueId}/wrapupcodes", app.handleRoutingQueueWrapupcodesAdd)
+	r.Delete("/routing/queues/{queueId}/wrapupcodes/{codeId}", app.handleRoutingQueueWrapupcodesDelete)
+}
+
+type queueWrapupRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+}
+
+func (app *Application) handleRoutingQueueWrapupcodesList(w http.ResponseWriter, r *http.Request) {
+	queueID := chi.URLParam(r, "queueId")
+	if err := app.requireQueueExists(queueID); err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "routing_queue")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	codes := app.queueWrapupCodes(queueID)
+	entries := make([]json.RawMessage, 0, len(codes))
+	for _, codeID := range codes {
+		b, _ := json.Marshal(queueWrapupRef{ID: codeID})
+		entries = append(entries, json.RawMessage(b))
+	}
+	pagedList(w, r, entries)
+}
+
+func (app *Application) handleRoutingQueueWrapupcodesAdd(w http.ResponseWriter, r *http.Request) {
+	queueID := chi.URLParam(r, "queueId")
+	if err := app.requireQueueExists(queueID); err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "routing_queue")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	var refs []queueWrapupRef
+	if err := json.NewDecoder(r.Body).Decode(&refs); err != nil {
+		writeBadRequest(w, "body: "+err.Error())
+		return
+	}
+	for _, ref := range refs {
+		if ref.ID != "" {
+			app.addQueueWrapupCode(queueID, ref.ID)
+		}
+	}
+	codes := app.queueWrapupCodes(queueID)
+	entries := make([]queueWrapupRef, 0, len(codes))
+	for _, codeID := range codes {
+		entries = append(entries, queueWrapupRef{ID: codeID})
+	}
+	writeJSONStatus(w, http.StatusOK, entries)
+}
+
+func (app *Application) handleRoutingQueueWrapupcodesDelete(w http.ResponseWriter, r *http.Request) {
+	queueID := chi.URLParam(r, "queueId")
+	codeID := chi.URLParam(r, "codeId")
+	if err := app.requireQueueExists(queueID); err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			writeNotFound(w, "routing_queue")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	app.removeQueueWrapupCode(queueID, codeID)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (app *Application) handleRoutingQueueCreate(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +144,12 @@ func (app *Application) handleRoutingQueueCreate(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
-	writeJSONStatus(w, http.StatusCreated, json.RawMessage(enc))
+	// S116c: real Genesys returns 200 (not 201) for queue creation,
+	// and the genesyscloud provider's resource_genesyscloud_routing_queue
+	// CreateContext fails the apply if it sees anything other than 200
+	// (resource_genesyscloud_routing_queue.go:154). Match the upstream
+	// contract.
+	writeJSONStatus(w, http.StatusOK, json.RawMessage(enc))
 }
 
 func (app *Application) handleRoutingQueueList(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +174,28 @@ func (app *Application) handleRoutingQueueGet(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
-	writeJSONStatus(w, http.StatusOK, raw)
+	// S116c: derive memberCount on read. The genesyscloud provider's
+	// flattenQueueMembers short-circuits with "no members belong to
+	// queue" when queue.MemberCount is nil — even if /members would
+	// have returned actual rows. Then the consistency check on
+	// `members.<hash>.ring_num` fails because state doesn't carry the
+	// HCL members list. Computing memberCount at GET time keeps the
+	// queue body and the members table in sync without a writer-side
+	// update on every member-add.
+	var memberCount int
+	row := app.repo.DB().QueryRow(
+		`SELECT COUNT(*) FROM routing_queue_members WHERE queue_id = ?`, id)
+	if scanErr := row.Scan(&memberCount); scanErr != nil {
+		writeError(w, http.StatusInternalServerError, "internal", scanErr.Error())
+		return
+	}
+	var body map[string]any
+	if unmErr := json.Unmarshal(raw, &body); unmErr != nil {
+		writeError(w, http.StatusInternalServerError, "internal", unmErr.Error())
+		return
+	}
+	body["memberCount"] = memberCount
+	writeJSONStatus(w, http.StatusOK, body)
 }
 
 func (app *Application) handleRoutingQueueUpdate(w http.ResponseWriter, r *http.Request) {

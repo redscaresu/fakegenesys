@@ -113,9 +113,21 @@ func (app *Application) handleOAuthToken(w http.ResponseWriter, r *http.Request)
 			"only client_credentials is supported")
 		return
 	}
-	if r.PostForm.Get("client_id") == "" || r.PostForm.Get("client_secret") == "" {
+	// RFC 6749 § 2.3.1 allows HTTP Basic auth as an alternative to
+	// posting client_id/client_secret in the form body. The Genesys
+	// Cloud Go SDK uses Basic auth — without this branch the form
+	// params are empty and we 400. (S116c follow-up.)
+	clientID := r.PostForm.Get("client_id")
+	clientSecret := r.PostForm.Get("client_secret")
+	if clientID == "" || clientSecret == "" {
+		if u, p, ok := r.BasicAuth(); ok {
+			clientID = u
+			clientSecret = p
+		}
+	}
+	if clientID == "" || clientSecret == "" {
 		writeError(w, http.StatusBadRequest, "invalid_client",
-			"client_id and client_secret are required")
+			"client_id and client_secret are required (form params or HTTP Basic auth)")
 		return
 	}
 	tok := app.tokens.Issue()

@@ -107,6 +107,35 @@ func TestOAuthToken_RejectsMissingClientFields(t *testing.T) {
 	}
 }
 
+// TestOAuthToken_AcceptsBasicAuth — RFC 6749 § 2.3.1. The Genesys Go
+// SDK uses HTTP Basic auth for client credentials instead of form
+// params; before S116c we rejected those calls with 400 and the
+// provider failed to configure.
+func TestOAuthToken_AcceptsBasicAuth(t *testing.T) {
+	_, srv := newTestApp(t)
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/oauth/token",
+		strings.NewReader("grant_type=client_credentials"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("client-via-basic", "secret-via-basic")
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := decodeJSON(resp, &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.AccessToken == "" {
+		t.Fatalf("empty access_token")
+	}
+}
+
 func TestBearerAuth_RejectsMissingHeader(t *testing.T) {
 	_, srv := newTestApp(t)
 	resp, err := srv.Client().Get(srv.URL + "/api/v2/users")
