@@ -3812,6 +3812,59 @@
         "parameters": []
       }
     },
+    "/api/v2/responsemanagement/libraries": {
+      "post": {
+        "operationId": "postResponsemanagementLibraries",
+        "summary": "Create library",
+        "parameters": []
+      },
+      "get": {
+        "operationId": "getResponsemanagementLibraries",
+        "summary": "List libraries",
+        "parameters": []
+      }
+    },
+    "/api/v2/responsemanagement/libraries/{libraryId}": {
+      "get": {
+        "operationId": "getResponsemanagementLibrary",
+        "summary": "Get library",
+        "parameters": [
+          {
+            "name": "libraryId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "schema": null
+          }
+        ]
+      },
+      "put": {
+        "operationId": "putResponsemanagementLibrary",
+        "summary": "Update library",
+        "parameters": [
+          {
+            "name": "libraryId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "schema": null
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteResponsemanagementLibrary",
+        "summary": "Delete library",
+        "parameters": [
+          {
+            "name": "libraryId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "schema": null
+          }
+        ]
+      }
+    },
     "/api/v2/responsemanagement/responses": {
       "get": {
         "operationId": "getResponsemanagementResponses",

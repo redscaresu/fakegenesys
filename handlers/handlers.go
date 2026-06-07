@@ -59,6 +59,59 @@ type Application struct {
 	// response. We allocate both ids at job-create time.
 	flowJobMu sync.Mutex
 	flowJobs  map[string]string
+
+	// responseLibMu guards the in-memory responsemanagement_library
+	// store. Libraries are the parent container for responses;
+	// fakegenesys's repository layer doesn't have a table for them
+	// because S111 wired responses standalone. S122c follow-up.
+	responseLibMu sync.Mutex
+	responseLibs  map[string]map[string]any
+}
+
+func (app *Application) storeResponseLibrary(id string, lib map[string]any) {
+	app.responseLibMu.Lock()
+	defer app.responseLibMu.Unlock()
+	if app.responseLibs == nil {
+		app.responseLibs = map[string]map[string]any{}
+	}
+	copied := make(map[string]any, len(lib))
+	for k, v := range lib {
+		copied[k] = v
+	}
+	app.responseLibs[id] = copied
+}
+
+func (app *Application) getResponseLibrary(id string) map[string]any {
+	app.responseLibMu.Lock()
+	defer app.responseLibMu.Unlock()
+	if v, ok := app.responseLibs[id]; ok {
+		copied := make(map[string]any, len(v))
+		for k, vv := range v {
+			copied[k] = vv
+		}
+		return copied
+	}
+	return nil
+}
+
+func (app *Application) listResponseLibraries() []map[string]any {
+	app.responseLibMu.Lock()
+	defer app.responseLibMu.Unlock()
+	out := make([]map[string]any, 0, len(app.responseLibs))
+	for _, v := range app.responseLibs {
+		copied := make(map[string]any, len(v))
+		for k, vv := range v {
+			copied[k] = vv
+		}
+		out = append(out, copied)
+	}
+	return out
+}
+
+func (app *Application) deleteResponseLibrary(id string) {
+	app.responseLibMu.Lock()
+	defer app.responseLibMu.Unlock()
+	delete(app.responseLibs, id)
 }
 
 func (app *Application) recordFlowJob(jobID, flowID string) {

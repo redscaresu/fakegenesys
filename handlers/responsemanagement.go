@@ -21,6 +21,88 @@ func (app *Application) registerResponseManagementRoutes(r chi.Router) {
 	r.Get("/responsemanagement/responses/{responseId}", app.handleResponseGet)
 	r.Put("/responsemanagement/responses/{responseId}", app.handleResponseUpdate)
 	r.Delete("/responsemanagement/responses/{responseId}", app.handleResponseDelete)
+	// S122c: libraries are the parent container for responses. The
+	// provider requires this resource before responses can be created.
+	// In-memory storage — sufficient within one infrafactory run.
+	r.Post("/responsemanagement/libraries", app.handleLibraryCreate)
+	r.Get("/responsemanagement/libraries", app.handleLibraryList)
+	r.Get("/responsemanagement/libraries/{libraryId}", app.handleLibraryGet)
+	r.Put("/responsemanagement/libraries/{libraryId}", app.handleLibraryUpdate)
+	r.Delete("/responsemanagement/libraries/{libraryId}", app.handleLibraryDelete)
+}
+
+func (app *Application) handleLibraryCreate(w http.ResponseWriter, r *http.Request) {
+	body, err := decodeJSONBody(r)
+	if err != nil {
+		writeBadRequest(w, "body: "+err.Error())
+		return
+	}
+	if err := requireStringFields(body, "name"); err != nil {
+		writeBadRequest(w, err.Error())
+		return
+	}
+	id := newID()
+	body["id"] = id
+	body["selfUri"] = "/api/v2/responsemanagement/libraries/" + id
+	if body["division"] == nil {
+		body["division"] = map[string]any{
+			"id":   fakegenesysHomeDivisionID,
+			"name": "Home",
+		}
+	}
+	app.storeResponseLibrary(id, body)
+	writeJSONStatus(w, http.StatusOK, body)
+}
+
+func (app *Application) handleLibraryList(w http.ResponseWriter, r *http.Request) {
+	entries := app.listResponseLibraries()
+	body := map[string]any{
+		"entities":   entries,
+		"total":      len(entries),
+		"pageCount":  1,
+		"pageNumber": 1,
+		"pageSize":   25,
+	}
+	writeJSONStatus(w, http.StatusOK, body)
+}
+
+func (app *Application) handleLibraryGet(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "libraryId")
+	lib := app.getResponseLibrary(id)
+	if lib == nil {
+		writeNotFound(w, "responsemanagement_library")
+		return
+	}
+	writeJSONStatus(w, http.StatusOK, lib)
+}
+
+func (app *Application) handleLibraryUpdate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "libraryId")
+	lib := app.getResponseLibrary(id)
+	if lib == nil {
+		writeNotFound(w, "responsemanagement_library")
+		return
+	}
+	patch, err := decodeJSONBody(r)
+	if err != nil {
+		writeBadRequest(w, "body: "+err.Error())
+		return
+	}
+	for k, v := range patch {
+		switch k {
+		case "id", "selfUri":
+		default:
+			lib[k] = v
+		}
+	}
+	app.storeResponseLibrary(id, lib)
+	writeJSONStatus(w, http.StatusOK, lib)
+}
+
+func (app *Application) handleLibraryDelete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "libraryId")
+	app.deleteResponseLibrary(id)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (app *Application) handleResponseCreate(w http.ResponseWriter, r *http.Request) {
