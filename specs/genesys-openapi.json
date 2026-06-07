@@ -948,7 +948,7 @@
     "/api/v2/authorization/subjects/{subjectId}": {
       "get": {
         "operationId": "getAuthorizationSubject",
-        "summary": "Returns a listing of roles and permissions for a user.",
+        "summary": "Get subject grants",
         "parameters": [
           {
             "name": "subjectId",
