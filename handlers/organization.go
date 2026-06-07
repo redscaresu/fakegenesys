@@ -39,6 +39,25 @@ func (app *Application) registerOrganizationRoutes(r chi.Router) {
 	// surface so they may already be handled by the standard user
 	// resource registrations (see /tokens/me docstring).
 	r.Get("/users/me", app.handleUsersMe)
+	// S122f: GetAuthorizationSubject. The genesyscloud_user_roles
+	// resource's flattenSubjectRoles / updateSubjectRoles paths fetch
+	// the existing grants for a subject (user) via this endpoint
+	// before computing the diff to PUT. Without it, every user_roles
+	// apply 501s and aborts.
+	r.Get("/authorization/subjects/{subjectId}", app.handleAuthorizationSubject)
+}
+
+func (app *Application) handleAuthorizationSubject(w http.ResponseWriter, r *http.Request) {
+	subjectID := chi.URLParam(r, "subjectId")
+	body := map[string]any{
+		"id":     subjectID,
+		"name":   "fakegenesys subject " + subjectID,
+		"grants": []any{},
+		"selfUri": "/api/v2/authorization/subjects/" + subjectID,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 const fakegenesysTerraformUserID = "fakegenesys-tf-user-0000-0000-0000-000000000000"
