@@ -122,8 +122,16 @@ func (app *Application) handleTokensMe(w http.ResponseWriter, _ *http.Request) {
 			"id":   fakegenesysOrgID,
 			"name": "fakegenesys",
 		},
-		// S119: oauth_client crash fix.
-		"oAuthClient": map[string]any{
+		// S119/S122c: oauth_client crash fix. KEY MUST BE PascalCase
+		// "OAuthClient", not camelCase "oAuthClient" — the Genesys
+		// platform-client-sdk-go's Tokeninfo.UnmarshalJSON has a custom
+		// implementation that does `TokeninfoMap["OAuthClient"]`
+		// directly, bypassing Go's default case-insensitive matching.
+		// camelCase keys are silently dropped, leaving OAuthClient nil,
+		// and updateTerraformUserWithRole at provider.go:213 dereferences
+		// `*tokenInfo.OAuthClient.Organization.Id` straight into a
+		// segfault.
+		"OAuthClient": map[string]any{
 			"id":   "fakegenesys-oauth-builtin",
 			"name": "fakegenesys terraform client",
 			"organization": map[string]any{
