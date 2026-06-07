@@ -29,6 +29,36 @@ func (app *Application) registerOrganizationRoutes(r chi.Router) {
 	r.Get("/authorization/divisions", app.handleAuthorizationDivisions)
 	r.Get("/authorization/divisions/home", app.handleAuthorizationDivisionsHome)
 	r.Get("/tokens/me", app.handleTokensMe)
+	// S122d: GetTerraformUser path. The genesyscloud provider's
+	// updateTerraformUserWithRole, when it sees /tokens/me return
+	// oAuthClient.organization.id = "purecloud-builtin", proceeds to
+	// fetch the "terraform user" via GET /users/me to read their roles
+	// and assign new ones. Returning a synthetic admin user satisfies
+	// the call chain; the subsequent /users/{id}/roles GET/PUT also
+	// needs handlers but those route to the existing /users/{id}/* SDK
+	// surface so they may already be handled by the standard user
+	// resource registrations (see /tokens/me docstring).
+	r.Get("/users/me", app.handleUsersMe)
+}
+
+const fakegenesysTerraformUserID = "fakegenesys-tf-user-0000-0000-0000-000000000000"
+
+func (app *Application) handleUsersMe(w http.ResponseWriter, _ *http.Request) {
+	body := map[string]any{
+		"id":      fakegenesysTerraformUserID,
+		"name":    "fakegenesys terraform user",
+		"email":   "terraform@fakegenesys.local",
+		"state":   "active",
+		"version": 1,
+		"selfUri": "/api/v2/users/" + fakegenesysTerraformUserID,
+		"division": map[string]any{
+			"id":   fakegenesysHomeDivisionID,
+			"name": "Home",
+		},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 // handleAuthorizationProducts — list of Genesys product entitlements

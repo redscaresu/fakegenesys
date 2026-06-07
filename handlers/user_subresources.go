@@ -23,6 +23,38 @@ func (app *Application) registerUserSubresourceRoutes(r chi.Router) {
 	// /users/search — the provider's destroy path calls this to verify
 	// the soft-delete landed. POST with a body of {pageNumber, query: [{...}]}.
 	r.Post("/users/search", app.handleUserSearch)
+	// S122d: GetTerraformUserRoles / UpdateTerraformUserRoles. After
+	// the oauth_client create path reads /tokens/me + /users/me, it
+	// reads the terraform user's roles, diffs against the role being
+	// attached to the new client, and PUTs the merged list. Both
+	// GET and PUT return Userauthorization shape.
+	r.Get("/users/{userId}/roles", app.handleUserRolesGet)
+	r.Put("/users/{userId}/roles", app.handleUserRolesPut)
+}
+
+func (app *Application) handleUserRolesGet(w http.ResponseWriter, _ *http.Request) {
+	body := map[string]any{
+		"version": 1,
+		"roles":   []any{},
+	}
+	writeJSONStatus(w, http.StatusOK, body)
+}
+
+func (app *Application) handleUserRolesPut(w http.ResponseWriter, r *http.Request) {
+	var roleIDs []string
+	_ = json.NewDecoder(r.Body).Decode(&roleIDs)
+	roles := make([]map[string]any, 0, len(roleIDs))
+	for _, rid := range roleIDs {
+		roles = append(roles, map[string]any{
+			"id":      rid,
+			"selfUri": "/api/v2/authorization/roles/" + rid,
+		})
+	}
+	body := map[string]any{
+		"version": 1,
+		"roles":   roles,
+	}
+	writeJSONStatus(w, http.StatusOK, body)
 }
 
 // userProficiencyRef matches the SDK's Userroutingskillpost /

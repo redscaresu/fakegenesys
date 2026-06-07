@@ -6124,30 +6124,8 @@
     "/api/v2/users/me": {
       "get": {
         "operationId": "getUsersMe",
-        "summary": "Get current user details.",
-        "parameters": [
-          {
-            "name": "expand",
-            "in": "query",
-            "required": false,
-            "type": "array",
-            "schema": null
-          },
-          {
-            "name": "integrationPresenceSource",
-            "in": "query",
-            "required": false,
-            "type": "string",
-            "schema": null
-          },
-          {
-            "name": "userCustomAttributeSchemaIds",
-            "in": "query",
-            "required": false,
-            "type": "array",
-            "schema": null
-          }
-        ]
+        "summary": "Get current user",
+        "parameters": []
       }
     },
     "/api/v2/users/me/password": {
@@ -7572,6 +7550,34 @@
             "schema": {
               "$ref": "#/definitions/UserQueue"
             }
+          }
+        ]
+      }
+    },
+    "/api/v2/users/{userId}/roles": {
+      "get": {
+        "operationId": "getUserRoles",
+        "summary": "Get user roles",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "schema": null
+          }
+        ]
+      },
+      "put": {
+        "operationId": "putUserRoles",
+        "summary": "Replace user roles",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "schema": null
           }
         ]
       }
