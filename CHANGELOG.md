@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-10
+
+The v0.2 hardening arc — closes the standalone-quality gaps fakegenesys
+had vs siblings at v0.1.0, locks in a CI-enforced contract-coverage
+convention shared across the family.
+
+### Added (S123)
+- **17 `TestContract_*` regression tests** locking in every wire-shape
+  invariant the `mypurecloud/genesyscloud` Terraform provider depends
+  on across the post-S116/S122 handler surface. See
+  `docs/contract-matrix-s123.md` for the per-row matrix.
+- **`CRITICAL[<id>]:` / `MUST[<id>]:` docstring convention** in each
+  handler — the matrix's source of truth for what each test locks in.
+  Two tests (`TestContract_tokens_me_oauthclient_pascal_case` and
+  `TestContract_users_search_results_key`) inspect raw response bytes
+  because Go's `json.Unmarshal` is case-insensitive and would
+  otherwise mask the regression.
+
+### Added (S125)
+- **`.github/workflows/docker.yml`** — multi-arch (linux/amd64 +
+  linux/arm64) container build pushing to
+  `ghcr.io/redscaresu/fakegenesys:{latest, <sha>}`. Triggers on the
+  `ci` workflow completing successfully on main (NOT a nightly
+  schedule). Sibling-parity with mockway, fakegcp, fakeaws.
+
+### Added (S124)
+- **`docs/review-passes/pass3.md`** documents pass 3 + pass 4, both
+  returning `NOTHING_TO_IMPROVE` against the post-S116/S122 surface.
+  Review loop closes per the anti-nitpick rule (two consecutive
+  no-substantive passes).
+
+### Added (S126+S127)
+- **`handlers/contract_audit_test.go`** — durable CI-enforced check
+  that every `CRITICAL[<id>]:`/`MUST[<id>]:` docstring has a paired
+  `TestContract_<id>` and vice versa. Drift becomes a failed
+  `go test`, not a missed code review. Includes a self-test
+  (`TestContractAuditTest_Self`) so the audit itself stays correct.
+  Empty-contracts-safe — sibling fakes adopt the file before sweeping
+  existing notes.
+- **README "Testing examples" stanza** — canonical entry point is
+  `go test ./examples/...` (gated by `FAKEGENESYS_ENABLE_E2E=1`).
+  Same wording landed across mockway, fakegcp, fakeaws.
+
+### Fixed (S123)
+- **`handlers/flow.go::handleFlowJobCreate`**: derive `uploadHost`
+  from `r.Host` (with `localhost:8083` fallback) instead of
+  hardcoding the production port. In tests `httptest` binds a random
+  port; the previous hardcoded URL would 503 outside CI environments
+  that happened to have fakegenesys already on `:8083`.
+
+## [0.1.0] - 2026-06-10
+
+The initial fakegenesys release — Genesys Cloud CCaaS mock for the
+infrafactory generate→validate loop. 44/44 deterministic sustain
+sweep at full scope. Tagged at commit `ba2de5a` (S122g).
+
+### Added (S116c, S119, S122/a/b/c/d/f/g)
+- **Post-auth SDK probe endpoints**: `/organizations/me`,
+  `/authorization/products` (with non-nil `total`),
+  `/authorization/divisions{,/home}`, `/tokens/me` (with PascalCase
+  `OAuthClient.organization.id == "purecloud-builtin"`).
+- **OAuth `client_credentials` Basic Auth** per RFC 6749 § 2.3.1.
+- **`POST /users/search`** returning `{results:[...]}` (paged-list
+  key is `results`, NOT `entities` — provider reads
+  `Usersearchresponse.Results`).
+- **User subresources** the SDK reads/writes on user CRUD:
+  `/users/{id}/routingskills`, `/routinglanguages`, `/roles` GET+PUT,
+  `/password` POST → 204.
+- **Default Home division** on `users` + `architect_datatables` create
+  (no `division` in body still round-trips a non-empty `division.id`).
+- **Routing queue create returns HTTP 200** (NOT 201, provider gates
+  on 200) + **`memberCount` derived at GET time** from the
+  `routing_queue_members` table.
+- **Routing queue wrapup-code associations**:
+  `/routing/queues/{id}/wrapupcodes` GET/POST/DELETE.
+- **Voicemail userpolicy + routing utilization** stubs.
+- **Group subresources**: `/groups/{id}/individuals` (membership list
+  the provider polls), `/groups/{id}/members` POST/DELETE (associate +
+  bulk remove via `?id=u1,u2`), `/groups/{id}/voicemail` (legacy) AND
+  `/voicemail/groups/{id}/policy` (modern) for GET + PATCH.
+- **`/users/me`** and **`/users/{id}/roles`** GET/PUT for the
+  terraform-user role chain after the oauth_client crash fix.
+- **`/authorization/subjects/{id}`** GET + bulkadd/bulkremove POSTs
+  (`grants` array must be non-nil — provider iterates it).
+- **`/responsemanagement/libraries`** CRUD (parent container for
+  `responsemanagement_response`).
+- **Flow upload-job protocol**: `POST /flows/jobs` returns
+  `presignedUrl` + `id`; PUT to that URL accepts the YAML; GET
+  `/flows/jobs/{jobId}` polled until `status: "Success"` + non-empty
+  `flow.id`. Auto-derives upload URL from `r.Host` (S123 fix).
+- **`architect_datatables`**: round-trip a non-empty `division.id` so
+  the provider's `*datatable.Division.Id` deref doesn't segfault.
+
 ### Added (S116)
 - **TLS MITM CONNECT proxy** on `:8443` (`--tls-port`; set `0` to disable). The `mypurecloud/genesyscloud` Terraform provider ignores `GENESYSCLOUD_GATEWAY_*` env vars and hardcodes `login.<region>.pure.cloud`. The proxy makes `HTTPS_PROXY=http://localhost:8443` route every provider call (auth + API) through fakegenesys without modifying the provider.
 - **Boot-time CA** generated in `NewApplication` (self-signed, 10-yr, 2048-bit RSA). Leaf certs dynamically issued per-hostname (SAN'd for the requested host) and cached for process lifetime.
