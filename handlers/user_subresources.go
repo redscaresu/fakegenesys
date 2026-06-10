@@ -20,21 +20,34 @@ func (app *Application) registerUserSubresourceRoutes(r chi.Router) {
 	r.Patch("/users/{userId}/routingskills/bulk", app.handleUserRoutingSkillsBulkPatch)
 	r.Get("/users/{userId}/routinglanguages", app.handleUserRoutingLanguagesList)
 	r.Patch("/users/{userId}/routinglanguages/bulk", app.handleUserRoutingLanguagesBulkPatch)
-	// /users/search — the provider's destroy path calls this to verify
-	// the soft-delete landed. POST with a body of {pageNumber, query: [{...}]}.
+	// CRITICAL[users-search-results-key]: S116c followup. The provider's
+	// destroy path calls /users/search to verify the soft-delete landed.
+	// Response uses the paged-list key `results` (NOT `entities` like
+	// every other paged endpoint) — provider reads Usersearchresponse.Results.
+	// Locked in by TestContract_users_search_results_key.
 	r.Post("/users/search", app.handleUserSearch)
-	// S122d: GetTerraformUserRoles / UpdateTerraformUserRoles. After
-	// the oauth_client create path reads /tokens/me + /users/me, it
-	// reads the terraform user's roles, diffs against the role being
-	// attached to the new client, and PUTs the merged list. Both
-	// GET and PUT return Userauthorization shape.
+	// CRITICAL[user-roles-get-version-and-roles]: S122d.
+	// GetTerraformUserRoles / UpdateTerraformUserRoles. After the
+	// oauth_client create path reads /tokens/me + /users/me, it reads
+	// the terraform user's roles, diffs against the role being attached
+	// to the new client, and PUTs the merged list. GET returns
+	// Userauthorization shape with non-nil `version` and `roles[]`.
+	// Locked in by TestContract_user_roles_get_version_and_roles.
 	r.Get("/users/{userId}/roles", app.handleUserRolesGet)
+	// CRITICAL[user-roles-put-echoes-ids]: S122d sibling. PUT echoes the
+	// posted role-ID list back in {roles:[{id, selfUri}], version} shape.
+	// Locked in by TestContract_user_roles_put_echoes_ids.
 	r.Put("/users/{userId}/roles", app.handleUserRolesPut)
-	// S122g: user password update + subject bulkadd grants.
-	// Both are POST endpoints the genesyscloud_user / user_roles
-	// resources call as part of their update chain after S122d-f
-	// unblocked the read path. Both return 204 No Content on success.
+	// CRITICAL[user-password-204]: S122g. Password update endpoint must
+	// return 204 No Content for any body (real Genesys validates against
+	// the org's password policy; fakegenesys accepts any). Locked in by
+	// TestContract_user_password_204.
 	r.Post("/users/{userId}/password", app.handleUserPassword)
+	// CRITICAL[subjects-bulkadd-bulkremove-204]: S122g. bulkadd /
+	// bulkremove grants. Body is Roledivisiongrants. Provider gates on
+	// the status code only; body is intentionally not persisted. Both
+	// must return 204 No Content. Locked in by
+	// TestContract_subjects_bulkadd_bulkremove_204.
 	r.Post("/authorization/subjects/{subjectId}/bulkadd", app.handleSubjectBulkadd)
 	r.Post("/authorization/subjects/{subjectId}/bulkremove", app.handleSubjectBulkadd)
 }

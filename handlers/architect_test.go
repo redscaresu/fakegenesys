@@ -326,3 +326,144 @@ func TestIDPGeneric_Singleton(t *testing.T) {
 		t.Fatalf("after delete: status %d, want 404", resp.StatusCode)
 	}
 }
+
+// --- S123 contract tests ---------------------------------------------
+
+// TestContract_architect_datatable_create_default_division asserts the
+// wire-shape invariant that POST /api/v2/flows/datatables with no
+// `division` field still round-trips a non-empty `division.id` on both
+// the create response and the read-after-create. The provider's
+// readArchitectDatatable derefs *datatable.Division.Id
+// (resource_genesyscloud_architect_datatable.go:121); without a default
+// division the plugin segfaults.
+//
+// Paired with CRITICAL[architect-datatable-create-default-division] in
+// handlers/architect_datatable.go.
+func TestContract_architect_datatable_create_default_division(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+	var created map[string]any
+	resp := ts.PostJSON(t, "/api/v2/flows/datatables",
+		map[string]any{"name": "defaulted-dt"}, &created)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create: status %d", resp.StatusCode)
+	}
+	assertNonEmptyDivisionID(t, created, "create response")
+
+	id, _ := created["id"].(string)
+	var got map[string]any
+	resp = ts.GetJSON(t, "/api/v2/flows/datatables/"+id, &got)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("read-after-create: status %d", resp.StatusCode)
+	}
+	assertNonEmptyDivisionID(t, got, "read-after-create response")
+}
+
+// TestContract_flow_jobs_upload_protocol asserts the 3-step upload-job
+// protocol the genesyscloud_flow resource uses:
+//
+//  1. POST /api/v2/flows/jobs → 200 with `presignedUrl` (pointing at
+//     a NO_PROXY host so the upload doesn't loop back through MITM) +
+//     `id` (jobId).
+//  2. PUT to presignedUrl with the YAML payload → 2xx.
+//  3. GET /api/v2/flows/jobs/{jobId} → 200 with status="Success" +
+//     non-empty flow.id.
+//
+// Paired with CRITICAL[flow-jobs-upload-protocol] in handlers/flow.go.
+func TestContract_flow_jobs_upload_protocol(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+
+	// Step 1: create job.
+	var job map[string]any
+	resp := ts.PostJSON(t, "/api/v2/flows/jobs", map[string]any{}, &job)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /flows/jobs: status %d", resp.StatusCode)
+	}
+	jobID, _ := job["id"].(string)
+	if jobID == "" {
+		t.Fatalf("POST /flows/jobs: response missing id")
+	}
+	uploadURL, _ := job["presignedUrl"].(string)
+	if uploadURL == "" {
+		t.Fatalf("POST /flows/jobs: response missing presignedUrl")
+	}
+	// presignedUrl MUST point at a NO_PROXY host (localhost / 127.0.0.1)
+	// or the upload loops back through the MITM proxy and fails.
+	if !bytes.Contains([]byte(uploadURL), []byte("localhost")) &&
+		!bytes.Contains([]byte(uploadURL), []byte("127.0.0.1")) {
+		t.Fatalf("presignedUrl %q must point at localhost or 127.0.0.1 (NO_PROXY host)", uploadURL)
+	}
+
+	// Step 2: upload.
+	req, err := http.NewRequest(http.MethodPut, uploadURL,
+		bytes.NewReader([]byte("inboundCall:\n  name: fake-flow\n")))
+	if err != nil {
+		t.Fatalf("upload NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	upResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("upload Do: %v", err)
+	}
+	defer upResp.Body.Close()
+	if upResp.StatusCode < 200 || upResp.StatusCode >= 300 {
+		body, _ := io.ReadAll(upResp.Body)
+		t.Fatalf("upload PUT: status %d; body: %s", upResp.StatusCode, body)
+	}
+
+	// Step 3: poll job.
+	var poll map[string]any
+	resp = ts.GetJSON(t, "/api/v2/flows/jobs/"+jobID, &poll)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /flows/jobs/{id}: status %d", resp.StatusCode)
+	}
+	if status, _ := poll["status"].(string); status != "Success" {
+		t.Fatalf("job status = %q, want %q (provider polls until Success)", status, "Success")
+	}
+	flow, _ := poll["flow"].(map[string]any)
+	if flow == nil {
+		t.Fatalf("job poll missing 'flow' object")
+	}
+	if flowID, _ := flow["id"].(string); flowID == "" {
+		t.Fatalf("job poll: flow.id is empty (provider reads it into state)")
+	}
+}
+
+// TestContract_responsemanagement_library_crud_round_trip asserts the
+// library resource — which is the parent container the provider
+// requires before any responsemanagement_response can be created.
+// POST returns 200 with a non-empty id; subsequent GET returns the
+// stored library.
+//
+// Paired with CRITICAL[responsemanagement-library-crud-round-trip] in
+// handlers/responsemanagement.go.
+func TestContract_responsemanagement_library_crud_round_trip(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+	var created map[string]any
+	resp := ts.PostJSON(t, "/api/v2/responsemanagement/libraries",
+		map[string]any{"name": "lib1"}, &created)
+	// Real Genesys returns 200 (not 201) for library create; the
+	// provider's CreateContext gates on 2xx and reads body.id either way,
+	// but the contract is 200.
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /libraries: status %d, want 2xx", resp.StatusCode)
+	}
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatalf("POST /libraries: response missing id")
+	}
+	if name, _ := created["name"].(string); name != "lib1" {
+		t.Fatalf("POST /libraries: name round-trip got %q want %q", name, "lib1")
+	}
+
+	var got map[string]any
+	resp = ts.GetJSON(t, "/api/v2/responsemanagement/libraries/"+id, &got)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /libraries/{id}: status %d", resp.StatusCode)
+	}
+	if gotID, _ := got["id"].(string); gotID != id {
+		t.Errorf("GET id = %q, want %q", gotID, id)
+	}
+	if name, _ := got["name"].(string); name != "lib1" {
+		t.Errorf("GET name = %q, want %q", name, "lib1")
+	}
+}

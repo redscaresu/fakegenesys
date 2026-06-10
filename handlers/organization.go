@@ -29,21 +29,27 @@ func (app *Application) registerOrganizationRoutes(r chi.Router) {
 	r.Get("/authorization/divisions", app.handleAuthorizationDivisions)
 	r.Get("/authorization/divisions/home", app.handleAuthorizationDivisionsHome)
 	r.Get("/tokens/me", app.handleTokensMe)
-	// S122d: GetTerraformUser path. The genesyscloud provider's
-	// updateTerraformUserWithRole, when it sees /tokens/me return
-	// oAuthClient.organization.id = "purecloud-builtin", proceeds to
-	// fetch the "terraform user" via GET /users/me to read their roles
-	// and assign new ones. Returning a synthetic admin user satisfies
-	// the call chain; the subsequent /users/{id}/roles GET/PUT also
-	// needs handlers but those route to the existing /users/{id}/* SDK
-	// surface so they may already be handled by the standard user
-	// resource registrations (see /tokens/me docstring).
+	// CRITICAL[users-me-synthetic-tf-user]: S122d. GetTerraformUser
+	// path. The genesyscloud provider's updateTerraformUserWithRole,
+	// when it sees /tokens/me return oAuthClient.organization.id =
+	// "purecloud-builtin", proceeds to fetch the "terraform user" via
+	// GET /users/me to read their roles and assign new ones. Returning
+	// a synthetic admin user with a stable non-empty id + a non-empty
+	// division.id satisfies the call chain; the subsequent /users/{id}/
+	// roles GET/PUT also needs handlers but those route to the existing
+	// /users/{id}/* SDK surface so they may already be handled by the
+	// standard user resource registrations (see /tokens/me docstring).
+	// Locked in by TestContract_users_me_synthetic_tf_user.
 	r.Get("/users/me", app.handleUsersMe)
-	// S122f: GetAuthorizationSubject. The genesyscloud_user_roles
-	// resource's flattenSubjectRoles / updateSubjectRoles paths fetch
-	// the existing grants for a subject (user) via this endpoint
-	// before computing the diff to PUT. Without it, every user_roles
-	// apply 501s and aborts.
+	// CRITICAL[authorization-subject-grants-non-nil]: S122f.
+	// GetAuthorizationSubject. The genesyscloud_user_roles resource's
+	// flattenSubjectRoles / updateSubjectRoles paths fetch the existing
+	// grants for a subject (user) via this endpoint before computing
+	// the diff to PUT. The response must include the requested id, a
+	// non-empty name, and a non-nil grants array (empty array is fine;
+	// nil is not — provider iterates). Without it, every user_roles
+	// apply 501s and aborts. Locked in by
+	// TestContract_authorization_subject_grants_non_nil.
 	r.Get("/authorization/subjects/{subjectId}", app.handleAuthorizationSubject)
 }
 
@@ -85,10 +91,11 @@ func (app *Application) handleUsersMe(w http.ResponseWriter, _ *http.Request) {
 // broad list is safe; the provider only checks for the presence of
 // specific products it needs.
 //
-// CRITICAL: the response MUST include "total" (int). The Genesys
-// Terraform provider's getAuthorizationProducts at provider.go:224
-// does `make([]string, *productEntities.Total)` — a nil Total nukes
-// the plugin with a segfault before the first resource is created.
+// CRITICAL[authorization-products-total-int]: the response MUST include
+// "total" (int). The Genesys Terraform provider's getAuthorizationProducts
+// at provider.go:224 does `make([]string, *productEntities.Total)` — a
+// nil Total nukes the plugin with a segfault before the first resource
+// is created. Locked in by TestContract_authorization_products_total_int.
 func (app *Application) handleAuthorizationProducts(w http.ResponseWriter, _ *http.Request) {
 	entities := []map[string]any{
 		{"id": "useCustomerEngagement", "name": "Customer Engagement"},
@@ -151,15 +158,17 @@ func (app *Application) handleAuthorizationDivisionsHome(w http.ResponseWriter, 
 // for permissions during connection setup. Stub returns a synthetic
 // admin user with broad permissions.
 //
-// CRITICAL: the response MUST include oAuthClient.organization.id.
-// The Terraform provider's createOAuthClient calls
-// updateTerraformUserWithRole at resource_genesyscloud_oauth_client.go:213
+// CRITICAL[tokens-me-oauthclient-pascal-case]: the response MUST include
+// oAuthClient.organization.id. The Terraform provider's createOAuthClient
+// calls updateTerraformUserWithRole at resource_genesyscloud_oauth_client.go:213
 // which does `if *tokenInfo.OAuthClient.Organization.Id != "purecloud-builtin"`
 // — a nil OAuthClient or Organization segfaults the plugin during
 // EVERY oauth_client create. Returning "purecloud-builtin" routes the
 // provider down its safe role-assignment path; any other value
 // triggers an additional /users/me + role-assignment probe chain that
-// we'd also need to mock.
+// we'd also need to mock. The key case-sensitivity invariant is covered
+// in the body comment below. Locked in by
+// TestContract_tokens_me_oauthclient_pascal_case.
 func (app *Application) handleTokensMe(w http.ResponseWriter, _ *http.Request) {
 	body := map[string]any{
 		"authorizedScope": []string{},
@@ -171,15 +180,16 @@ func (app *Application) handleTokensMe(w http.ResponseWriter, _ *http.Request) {
 			"id":   fakegenesysOrgID,
 			"name": "fakegenesys",
 		},
-		// S119/S122c: oauth_client crash fix. KEY MUST BE PascalCase
-		// "OAuthClient", not camelCase "oAuthClient" — the Genesys
-		// platform-client-sdk-go's Tokeninfo.UnmarshalJSON has a custom
-		// implementation that does `TokeninfoMap["OAuthClient"]`
-		// directly, bypassing Go's default case-insensitive matching.
-		// camelCase keys are silently dropped, leaving OAuthClient nil,
-		// and updateTerraformUserWithRole at provider.go:213 dereferences
-		// `*tokenInfo.OAuthClient.Organization.Id` straight into a
-		// segfault.
+		// MUST[tokens-me-oauthclient-pascal-case]: oauth_client crash fix
+		// (S119/S122c). KEY MUST BE PascalCase "OAuthClient", not
+		// camelCase "oAuthClient" — the Genesys platform-client-sdk-go's
+		// Tokeninfo.UnmarshalJSON has a custom implementation that does
+		// `TokeninfoMap["OAuthClient"]` directly, bypassing Go's default
+		// case-insensitive matching. camelCase keys are silently dropped,
+		// leaving OAuthClient nil, and updateTerraformUserWithRole at
+		// provider.go:213 dereferences `*tokenInfo.OAuthClient.Organization.Id`
+		// straight into a segfault. Shares the test paired with the
+		// function-level CRITICAL[tokens-me-oauthclient-pascal-case] note.
 		"OAuthClient": map[string]any{
 			"id":   "fakegenesys-oauth-builtin",
 			"name": "fakegenesys terraform client",

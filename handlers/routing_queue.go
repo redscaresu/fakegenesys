@@ -144,11 +144,14 @@ func (app *Application) handleRoutingQueueCreate(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
-	// S116c: real Genesys returns 200 (not 201) for queue creation,
-	// and the genesyscloud provider's resource_genesyscloud_routing_queue
+	// CRITICAL[routing-queue-create-200-with-membercount]: S116c. Real
+	// Genesys returns 200 (not 201) for queue creation, and the
+	// genesyscloud provider's resource_genesyscloud_routing_queue
 	// CreateContext fails the apply if it sees anything other than 200
 	// (resource_genesyscloud_routing_queue.go:154). Match the upstream
-	// contract.
+	// contract. The matching memberCount-on-GET invariant lives in
+	// handleRoutingQueueGet; both are paired with
+	// TestContract_routing_queue_create_200_with_membercount.
 	writeJSONStatus(w, http.StatusOK, json.RawMessage(enc))
 }
 

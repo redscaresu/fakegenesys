@@ -43,13 +43,15 @@ func (app *Application) registerFlowRoutes(r chi.Router) {
 	r.Post("/flows/actions/unlock", app.handleFlowUnlock)
 	r.Post("/flows/actions/revert", app.handleFlowUnlock)     // alias
 	r.Post("/flows/actions/deactivate", app.handleFlowUnlock) // alias
-	// S122: the upload-job protocol the genesyscloud provider uses for
-	// `genesyscloud_flow`. The provider does not POST the flow body
-	// directly to /flows; it asks the API for a presignedUrl, uploads
-	// the YAML there, then polls the job until success. fakegenesys
-	// fakes this by returning an in-process upload URL on the same
-	// port; the upload handler stores the bytes and the job-poll
-	// returns success + a real flow.id allocated at job-create time.
+	// CRITICAL[flow-jobs-upload-protocol]: S122. The upload-job protocol
+	// the genesyscloud provider uses for `genesyscloud_flow`. The
+	// provider does not POST the flow body directly to /flows; it asks
+	// the API for a presignedUrl, uploads the YAML there, then polls
+	// the job until success. fakegenesys fakes this by returning an
+	// in-process upload URL on the same port; the upload handler stores
+	// the bytes and the job-poll returns success + a real flow.id
+	// allocated at job-create time. Locked in by
+	// TestContract_flow_jobs_upload_protocol.
 	r.Post("/flows/jobs", app.handleFlowJobCreate)
 	r.Get("/flows/jobs/{jobId}", app.handleFlowJobGet)
 	r.Post("/flows", app.handleFlowCreate)
