@@ -1,18 +1,7 @@
-# examples/known_broken.yaml — provider smoke harness allowlist.
-#
-# Entries below skip the idempotency drift assertion (apply → plan
-# -detailed-exitcode = 0) but still run apply + destroy. If a
-# known-broken dir starts passing idempotency, the test FAILS with a
-# "congratulations, remove this entry" message — the ratchet only
-# tightens.
-#
-# Schema:
-#   entries:
-#     - dir: working/<resource>      # tree/dir-name pair
-#       symptom: "<one-line>"        # why it currently flaps
-#       ticket: "<repo>#<n>"         # tracking ticket
-#
-# S108 ships an empty list — nothing is broken yet because nothing is
-# implemented. Real entries arrive only if a resource lands with a
-# known idempotency gap that's already tracked.
+# Known-broken example dirs — apply may complete but plan-no-op /
+# idempotency is allowed to flap. Adding here is a ratchet: a dir
+# that starts passing the gate will fail the smoke test with
+# "congratulations, remove this entry" so we can't silently fix
+# without removing the entry.
+
 entries: []

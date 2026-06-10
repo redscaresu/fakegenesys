@@ -228,6 +228,19 @@ func setupGenesysProviderEnv(t *testing.T, fakegenesysURL string) {
 	} else {
 		t.Logf("setupGenesysProviderEnv: failed to fetch CA from /mock/ca-cert; TLS verification will fail")
 	}
+
+	// 5. FAKEGENESYS_UPLOAD_HOST: tell the flow upload-job handler what
+	//    host:port to embed in its presignedUrl response. Without this,
+	//    when the provider calls /api/v2/flows/jobs through the MITM,
+	//    r.Host comes back as the upstream Genesys domain and the
+	//    follow-up PUT routes back through HTTP_PROXY and 405s. The
+	//    per-test listener URL is just the fakegenesysURL minus the
+	//    scheme — that's the host:port the PUT should land on (and
+	//    NO_PROXY=localhost,127.0.0.1 ensures the PUT bypasses the
+	//    proxy entirely).
+	if parsed, err := url.Parse(fakegenesysURL); err == nil {
+		t.Setenv("FAKEGENESYS_UPLOAD_HOST", parsed.Host)
+	}
 }
 
 // derivedTLSProxyURL maps the fakegenesys API URL (e.g.
@@ -391,6 +404,13 @@ func spawnFakegenesys(t *testing.T, bin string) (int, func()) {
 	cmd := exec.Command(bin, "-port", fmt.Sprint(port), "-db", ":memory:")
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
+	// FAKEGENESYS_UPLOAD_HOST tells the flow upload-job handler what
+	// host:port to embed in its presignedUrl. Inherited from the parent
+	// would be too late — by the time t.Setenv runs in
+	// setupGenesysProviderEnv, this subprocess has already captured its
+	// env. So we explicitly inject it on cmd.Env at spawn time.
+	uploadHost := fmt.Sprintf("%s:%d", defaultFakegenesysHost, port)
+	cmd.Env = append(os.Environ(), "FAKEGENESYS_UPLOAD_HOST="+uploadHost)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("spawn fakegenesys: %v", err)
 	}
