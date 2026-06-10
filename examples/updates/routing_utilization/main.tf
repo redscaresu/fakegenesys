@@ -3,9 +3,8 @@ variable "call_capacity" {
 }
 
 resource "genesyscloud_routing_utilization" "org" {
-  utilization {
-    media_type                = "call"
-    maximum_capacity          = var.call_capacity
+  call {
+    maximum_capacity         = var.call_capacity
     interruptible_media_types = []
   }
 }

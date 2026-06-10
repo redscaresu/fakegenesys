@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-11
+
+The example-drift fix arc (S136–S138). Closes the gap where the
+standalone smoke test (`FAKEGENESYS_ENABLE_E2E=1 go test ./examples/...`)
+failed for two distinct reasons from a fresh clone — environment
+plumbing that the infrafactory harness provided automatically but
+`go test` did not, and HCL drift in several examples against the
+current `mypurecloud/genesyscloud` provider schema.
+
+### Added (S136)
+- **`examples/provider_smoke_test.go::setupGenesysProviderEnv`** —
+  the smoke harness now wires the genesyscloud provider's full
+  environment automatically per sub-test:
+  `GENESYSCLOUD_OAUTHCLIENT_ID/SECRET/REGION`, `HTTPS_PROXY` +
+  `HTTP_PROXY` routing through the TLS MITM (api_port + 360),
+  `NO_PROXY` for external registries, `SSL_CERT_FILE` pointing at
+  a CA fetched from `/mock/ca-cert` and written to `t.TempDir()`,
+  and `FAKEGENESYS_UPLOAD_HOST` so the flow upload-job handler
+  embeds the per-test listener address in its presignedUrl.
+
+### Fixed (S137)
+- **`handlers/flow.go::handleFlowJobCreate`** — respects
+  `FAKEGENESYS_UPLOAD_HOST` env var as the highest-priority source
+  for the upload URL's host:port. Falls back to `r.Host` (httptest
+  path) then `localhost:8083` (production default). Previously,
+  when reached through the MITM proxy, `r.Host` reflected the
+  upstream Genesys domain rather than the local listener; the
+  provider's follow-up PUT to the upload URL would route back
+  through HTTP_PROXY and get 405 from the CONNECT proxy.
+
+### Fixed (S137 + S138) — example HCL drift
+8 examples in `examples/working/` and 8 in `examples/updates/` plus
+1 misconfigured/ refreshed against the current provider schema:
+
+- `oauth_client.authorized_grant_type`: `CLIENT_CREDENTIALS` →
+  `CLIENT-CREDENTIALS` (hyphen, not underscore)
+- `idp_generic.certificate` (singular) → `certificates` (list)
+- `flow.file_content_hash` dropped (now provider-computed)
+- `architect_datatable.schema = jsonencode({...})` → `properties { name, type }` blocks
+- `location` now declares `address {...}` + `emergency_number {...}` with required subfields (`street1`, `city`, `zip_code`, `country`, `number`)
+- `responsemanagement_response` now requires a parent
+  `genesyscloud_responsemanagement_library` referenced via `library_ids`
+- `routing_utilization.utilization { media_type }` block → named per-media-type blocks (`call {}`, `email {}`, etc.)
+- `routing_skill.description` removed (provider deprecated the field)
+- `misconfigured/oauth_client/expected.txt` updated to match the provider's current error wording (`authorized_grant_type`)
+
+### Verified
+- `FAKEGENESYS_ENABLE_E2E=1 go test ./examples/...` runs 100% green
+  in ~205s from a fresh clone with zero manual env setup
+- `known_broken.yaml` is empty
+
 ## [0.2.0] - 2026-06-10
 
 The v0.2 hardening arc — closes the standalone-quality gaps fakegenesys
