@@ -66,9 +66,16 @@ FAKEGENESYS_ENABLE_E2E=1 go test ./examples/... -v -run TestProviderSmokeWorking
 FAKEGENESYS_ENABLE_E2E=1 go test ./examples/... -run TestProviderSmokeMisconfigured
 ```
 
-The harness builds the `fakegenesys` binary once, spawns a fresh
-instance on a random port per example (so dirs can't cross-contaminate
-state), and runs the per-tree contract:
+The harness is **self-contained** as of v0.2.1 — it builds the
+`fakegenesys` binary, spawns a fresh instance on a random port per
+example, AND wires up the `genesyscloud` provider's environment
+automatically (`HTTPS_PROXY` routing through the TLS MITM proxy,
+`SSL_CERT_FILE` pointing at the boot-time CA, `NO_PROXY` for
+external registries, and credentials env vars). No manual setup
+required — `go test ./examples/...` runs end-to-end from a fresh
+clone.
+
+The per-tree contract:
 
 | Tree | Contract |
 |---|---|
