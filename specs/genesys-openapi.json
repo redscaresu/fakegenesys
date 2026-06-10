@@ -969,29 +969,13 @@
     },
     "/api/v2/authorization/subjects/{subjectId}/bulkadd": {
       "post": {
-        "operationId": "postAuthorizationSubjectBulkadd",
-        "summary": "Bulk-grant roles and divisions to a subject.",
+        "operationId": "postAuthSubjBulkadd",
+        "summary": "Bulk add grants",
         "parameters": [
           {
             "name": "subjectId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "schema": null
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "type": null,
-            "schema": {
-              "$ref": "#/definitions/RoleDivisionGrants"
-            }
-          },
-          {
-            "name": "subjectType",
-            "in": "query",
-            "required": false,
             "type": "string",
             "schema": null
           }
@@ -1000,8 +984,8 @@
     },
     "/api/v2/authorization/subjects/{subjectId}/bulkremove": {
       "post": {
-        "operationId": "postAuthorizationSubjectBulkremove",
-        "summary": "Bulk-remove grants from a subject.",
+        "operationId": "postAuthSubjBulkremove",
+        "summary": "Bulk remove grants",
         "parameters": [
           {
             "name": "subjectId",
@@ -1009,15 +993,6 @@
             "required": true,
             "type": "string",
             "schema": null
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "type": null,
-            "schema": {
-              "$ref": "#/definitions/RoleDivisionGrants"
-            }
           }
         ]
       }
@@ -7270,7 +7245,7 @@
     "/api/v2/users/{userId}/password": {
       "post": {
         "operationId": "postUserPassword",
-        "summary": "Change a users password",
+        "summary": "Update password",
         "parameters": [
           {
             "name": "userId",
@@ -7278,15 +7253,6 @@
             "required": true,
             "type": "string",
             "schema": null
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "type": null,
-            "schema": {
-              "$ref": "#/definitions/ChangePasswordRequest"
-            }
           }
         ]
       }

@@ -30,6 +30,26 @@ func (app *Application) registerUserSubresourceRoutes(r chi.Router) {
 	// GET and PUT return Userauthorization shape.
 	r.Get("/users/{userId}/roles", app.handleUserRolesGet)
 	r.Put("/users/{userId}/roles", app.handleUserRolesPut)
+	// S122g: user password update + subject bulkadd grants.
+	// Both are POST endpoints the genesyscloud_user / user_roles
+	// resources call as part of their update chain after S122d-f
+	// unblocked the read path. Both return 204 No Content on success.
+	r.Post("/users/{userId}/password", app.handleUserPassword)
+	r.Post("/authorization/subjects/{subjectId}/bulkadd", app.handleSubjectBulkadd)
+	r.Post("/authorization/subjects/{subjectId}/bulkremove", app.handleSubjectBulkadd)
+}
+
+func (app *Application) handleUserPassword(w http.ResponseWriter, _ *http.Request) {
+	// Real Genesys validates the password against the org's policy;
+	// fakegenesys accepts any payload.
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (app *Application) handleSubjectBulkadd(w http.ResponseWriter, _ *http.Request) {
+	// Body is Roledivisiongrants. We don't actually track the
+	// associations — the smoke harness validates apply success, not
+	// runtime RBAC behavior.
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (app *Application) handleUserRolesGet(w http.ResponseWriter, _ *http.Request) {
