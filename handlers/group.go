@@ -21,21 +21,28 @@ func (app *Application) registerGroupRoutes(r chi.Router) {
 	r.Get("/groups/{groupId}", app.handleGroupGet)
 	r.Put("/groups/{groupId}", app.handleGroupUpdate)
 	r.Delete("/groups/{groupId}", app.handleGroupDelete)
-	// S122: group subresources. The genesyscloud provider's group Read
-	// path calls /individuals (member list) unconditionally; failing
-	// that fails the entire group apply. Voicemail userpolicy is
-	// followed by the group-update path. Both are minimal stubs.
+	// CRITICAL[group-members-individuals-round-trip]: S122. The
+	// genesyscloud provider's group Read path calls /individuals (member
+	// list) unconditionally; the apply hangs forever if its count
+	// doesn't converge against the HCL member_ids. POST /members is the
+	// associate path. DELETE removes via ?id=u1,u2 query param. Round-
+	// trip is asserted via TestContract_group_members_individuals_round_trip.
 	r.Get("/groups/{groupId}/individuals", app.handleGroupIndividuals)
+	// CRITICAL[group-voicemail-dual-paths]: S122. Genesys split the
+	// voicemail-policy namespace — provider tries both /groups/{id}/
+	// voicemail (legacy) AND /voicemail/groups/{id}/policy (modern).
+	// BOTH must respond to GET and PATCH (not 501). Locked in by
+	// TestContract_group_voicemail_dual_paths.
 	r.Get("/groups/{groupId}/voicemail", app.handleGroupVoicemail)
 	r.Patch("/groups/{groupId}/voicemail", app.handleGroupVoicemailPatch)
 	// S122: POST /groups/{id}/members is how the provider associates
 	// users with a group on create. Body is a list of {id, version}.
-	// We acknowledge with 204 (no body).
+	// We acknowledge with 204 (no body). Covered by the
+	// group-members-individuals-round-trip contract above.
 	r.Post("/groups/{groupId}/members", app.handleGroupMembersAdd)
 	r.Delete("/groups/{groupId}/members", app.handleGroupMembersDelete)
-	// S122: voicemail-side group policy. The provider's
-	// updateGroupVoicemailPolicy PATCHes a separate URL from the
-	// /groups/{id}/voicemail one (Genesys split the namespace).
+	// Modern voicemail-policy path — covered by the
+	// group-voicemail-dual-paths contract above.
 	r.Get("/voicemail/groups/{groupId}/policy", app.handleGroupVoicemail)
 	r.Patch("/voicemail/groups/{groupId}/policy", app.handleGroupVoicemailPatch)
 }

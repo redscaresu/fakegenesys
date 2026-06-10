@@ -107,32 +107,51 @@ func TestOAuthToken_RejectsMissingClientFields(t *testing.T) {
 	}
 }
 
-// TestOAuthToken_AcceptsBasicAuth — RFC 6749 § 2.3.1. The Genesys Go
-// SDK uses HTTP Basic auth for client credentials instead of form
+// TestContract_oauth_token_basic_auth — RFC 6749 § 2.3.1. The Genesys
+// Go SDK uses HTTP Basic auth for client credentials instead of form
 // params; before S116c we rejected those calls with 400 and the
-// provider failed to configure.
-func TestOAuthToken_AcceptsBasicAuth(t *testing.T) {
+// provider failed to configure. Asserts: form body has only
+// grant_type=client_credentials (no client_id/client_secret); Basic
+// Auth header carries the credentials; response is 200 with a
+// non-empty access_token, token_type=bearer, positive integer
+// expires_in. Both /oauth/token and the SDK's mirror endpoint
+// /login/oauth/token must behave identically.
+//
+// Paired with CRITICAL[oauth-token-basic-auth] in handlers/oauth.go.
+func TestContract_oauth_token_basic_auth(t *testing.T) {
 	_, srv := newTestApp(t)
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/oauth/token",
-		strings.NewReader("grant_type=client_credentials"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth("client-via-basic", "secret-via-basic")
-	resp, err := srv.Client().Do(req)
-	if err != nil {
-		t.Fatalf("Do: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
-	}
-	var body struct {
-		AccessToken string `json:"access_token"`
-	}
-	if err := decodeJSON(resp, &body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if body.AccessToken == "" {
-		t.Fatalf("empty access_token")
+	for _, path := range []string{"/oauth/token", "/login/oauth/token"} {
+		t.Run(path, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodPost, srv.URL+path,
+				strings.NewReader("grant_type=client_credentials"))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.SetBasicAuth("client-via-basic", "secret-via-basic")
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatalf("Do: %v", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want 200", resp.StatusCode)
+			}
+			var body struct {
+				AccessToken string `json:"access_token"`
+				TokenType   string `json:"token_type"`
+				ExpiresIn   int    `json:"expires_in"`
+			}
+			if err := decodeJSON(resp, &body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if body.AccessToken == "" {
+				t.Fatalf("empty access_token")
+			}
+			if body.TokenType != "bearer" {
+				t.Fatalf("token_type = %q, want %q", body.TokenType, "bearer")
+			}
+			if body.ExpiresIn <= 0 {
+				t.Fatalf("expires_in = %d, want positive", body.ExpiresIn)
+			}
+		})
 	}
 }
 

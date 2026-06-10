@@ -299,3 +299,51 @@ func TestRoutingUtilization_Singleton(t *testing.T) {
 		t.Fatalf("after delete: expected empty utilization map, got %v", reset)
 	}
 }
+
+// --- S123 contract tests ---------------------------------------------
+
+// TestContract_routing_queue_create_200_with_membercount asserts two
+// invariants the genesyscloud_routing_queue resource depends on:
+//
+//  1. POST /api/v2/routing/queues returns HTTP 200 (NOT 201). Real
+//     Genesys returns 200; the provider's CreateContext fails the apply
+//     if it sees anything else (resource_genesyscloud_routing_queue.go:154).
+//
+//  2. Subsequent GET /api/v2/routing/queues/{id} includes a non-nil
+//     integer `memberCount`. The provider's flattenQueueMembers
+//     short-circuits with "no members belong to queue" when MemberCount
+//     is nil — even if /members would have returned actual rows. State
+//     ends up missing the HCL members and the ring_num consistency
+//     check fails on subsequent plans.
+//
+// Paired with CRITICAL[routing-queue-create-200-with-membercount] in
+// handlers/routing_queue.go.
+func TestContract_routing_queue_create_200_with_membercount(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+	var created map[string]any
+	resp := ts.PostJSON(t, "/api/v2/routing/queues",
+		map[string]any{"name": "contract-q-200"}, &created)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /routing/queues: status = %d, want 200 (NOT 201 — provider gates on 200)", resp.StatusCode)
+	}
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatalf("POST /routing/queues: response missing id")
+	}
+
+	var got map[string]any
+	resp = ts.GetJSON(t, "/api/v2/routing/queues/"+id, &got)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /routing/queues/{id}: status %d", resp.StatusCode)
+	}
+	mc, present := got["memberCount"]
+	if !present {
+		t.Fatalf("GET response missing 'memberCount' — provider's flattenQueueMembers short-circuits on nil")
+	}
+	if mc == nil {
+		t.Fatalf("GET response 'memberCount' is JSON null — must be integer (provider short-circuits)")
+	}
+	if _, ok := mc.(float64); !ok {
+		t.Fatalf("GET response 'memberCount' is %T (%v), want number", mc, mc)
+	}
+}

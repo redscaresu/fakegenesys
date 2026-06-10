@@ -43,13 +43,15 @@ func (app *Application) registerFlowRoutes(r chi.Router) {
 	r.Post("/flows/actions/unlock", app.handleFlowUnlock)
 	r.Post("/flows/actions/revert", app.handleFlowUnlock)     // alias
 	r.Post("/flows/actions/deactivate", app.handleFlowUnlock) // alias
-	// S122: the upload-job protocol the genesyscloud provider uses for
-	// `genesyscloud_flow`. The provider does not POST the flow body
-	// directly to /flows; it asks the API for a presignedUrl, uploads
-	// the YAML there, then polls the job until success. fakegenesys
-	// fakes this by returning an in-process upload URL on the same
-	// port; the upload handler stores the bytes and the job-poll
-	// returns success + a real flow.id allocated at job-create time.
+	// CRITICAL[flow-jobs-upload-protocol]: S122. The upload-job protocol
+	// the genesyscloud provider uses for `genesyscloud_flow`. The
+	// provider does not POST the flow body directly to /flows; it asks
+	// the API for a presignedUrl, uploads the YAML there, then polls
+	// the job until success. fakegenesys fakes this by returning an
+	// in-process upload URL on the same port; the upload handler stores
+	// the bytes and the job-poll returns success + a real flow.id
+	// allocated at job-create time. Locked in by
+	// TestContract_flow_jobs_upload_protocol.
 	r.Post("/flows/jobs", app.handleFlowJobCreate)
 	r.Get("/flows/jobs/{jobId}", app.handleFlowJobGet)
 	r.Post("/flows", app.handleFlowCreate)
@@ -69,9 +71,18 @@ func (app *Application) registerFlowRoutes(r chi.Router) {
 func (app *Application) handleFlowJobCreate(w http.ResponseWriter, r *http.Request) {
 	jobID := newID()
 	flowID := newID()
-	// The infrafactory cloudEnv NO_PROXY includes localhost + 127.0.0.1
-	// so the upload won't try to go back through the MITM proxy.
-	uploadURL := "http://localhost:8083/mock/flow-upload/" + jobID
+	// Derive the upload URL from the request's Host so it reaches the
+	// same listener that handled this POST. In production the
+	// infrafactory cloudEnv NO_PROXY includes localhost + 127.0.0.1 so
+	// the upload skips the MITM proxy and lands directly on the
+	// fakegenesys mock-admin port (default :8083). In tests httptest
+	// binds a random port; r.Host carries that port verbatim, so the
+	// same code path works in both.
+	uploadHost := r.Host
+	if uploadHost == "" {
+		uploadHost = "localhost:8083"
+	}
+	uploadURL := "http://" + uploadHost + "/mock/flow-upload/" + jobID
 	// Track the (jobID -> flowID) pairing so the eventual GET can
 	// return the right flow.
 	app.recordFlowJob(jobID, flowID)

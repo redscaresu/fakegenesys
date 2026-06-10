@@ -21,9 +21,13 @@ func (app *Application) registerResponseManagementRoutes(r chi.Router) {
 	r.Get("/responsemanagement/responses/{responseId}", app.handleResponseGet)
 	r.Put("/responsemanagement/responses/{responseId}", app.handleResponseUpdate)
 	r.Delete("/responsemanagement/responses/{responseId}", app.handleResponseDelete)
-	// S122c: libraries are the parent container for responses. The
-	// provider requires this resource before responses can be created.
-	// In-memory storage — sufficient within one infrafactory run.
+	// CRITICAL[responsemanagement-library-crud-round-trip]: S122c.
+	// Libraries are the parent container for responses. The provider
+	// requires this resource before responses can be created. Create
+	// must return 200 with a non-empty `id`; subsequent GET by that id
+	// must return the stored library (not 404/501). In-memory storage
+	// — sufficient within one infrafactory run. Locked in by
+	// TestContract_responsemanagement_library_crud_round_trip.
 	r.Post("/responsemanagement/libraries", app.handleLibraryCreate)
 	r.Get("/responsemanagement/libraries", app.handleLibraryList)
 	r.Get("/responsemanagement/libraries/{libraryId}", app.handleLibraryGet)
