@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -78,7 +79,19 @@ func (app *Application) handleFlowJobCreate(w http.ResponseWriter, r *http.Reque
 	// fakegenesys mock-admin port (default :8083). In tests httptest
 	// binds a random port; r.Host carries that port verbatim, so the
 	// same code path works in both.
-	uploadHost := r.Host
+	// FAKEGENESYS_UPLOAD_HOST override lets callers explicitly set the
+	// upload URL's host:port. Required when this handler is reached
+	// via a TLS MITM proxy (HTTPS_PROXY): through the MITM, r.Host
+	// reflects the upstream Genesys domain (api.<region>.pure.cloud)
+	// rather than the local listener, so the provider's follow-up PUT
+	// to the upload URL would route back through HTTP_PROXY and 405
+	// (the CONNECT proxy doesn't speak PUT). The standalone smoke test
+	// sets this from its per-test listener URL. Falls back to r.Host
+	// (httptest path) then to localhost:8083 (process-default path).
+	uploadHost := strings.TrimSpace(os.Getenv("FAKEGENESYS_UPLOAD_HOST"))
+	if uploadHost == "" {
+		uploadHost = r.Host
+	}
 	if uploadHost == "" {
 		uploadHost = "localhost:8083"
 	}
