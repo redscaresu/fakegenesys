@@ -3,6 +3,5 @@ variable "yaml_file" {
 }
 
 resource "genesyscloud_flow" "ivr" {
-  filepath          = "${path.module}/${var.yaml_file}"
-  file_content_hash = filemd5("${path.module}/${var.yaml_file}")
+  filepath = "${path.module}/${var.yaml_file}"
 }

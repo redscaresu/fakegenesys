@@ -5,5 +5,5 @@ variable "description" {
 resource "genesyscloud_oauth_client" "bot" {
   name                  = "bot-updates"
   description           = var.description
-  authorized_grant_type = "CLIENT_CREDENTIALS"
+  authorized_grant_type = "CLIENT-CREDENTIALS"
 }

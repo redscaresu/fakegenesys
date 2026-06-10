@@ -3,8 +3,8 @@ variable "issuer_uri" {
 }
 
 resource "genesyscloud_idp_generic" "idp" {
-  name        = "Okta"
-  certificate = "MIIDpzCCAo+gAwIBAgIEAKKjyDANBgkqhkiG9w0BAQsFADBkMSY..."
-  issuer_uri  = var.issuer_uri
-  target_uri  = "${var.issuer_uri}/sso"
+  name         = "Okta"
+  certificates = ["MIIDpzCCAo+gAwIBAgIEAKKjyDANBgkqhkiG9w0BAQsFADBkMSY..."]
+  issuer_uri   = var.issuer_uri
+  target_uri   = "${var.issuer_uri}/sso"
 }

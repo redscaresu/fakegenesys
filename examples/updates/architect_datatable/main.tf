@@ -5,8 +5,9 @@ variable "description" {
 resource "genesyscloud_architect_datatable" "table" {
   name        = "lookup-updates"
   description = var.description
-  schema      = jsonencode({
-    "$schema" : "http://json-schema.org/draft-04/schema#",
-    "type" : "object"
-  })
+
+  properties {
+    name = "lookup_key"
+    type = "string"
+  }
 }

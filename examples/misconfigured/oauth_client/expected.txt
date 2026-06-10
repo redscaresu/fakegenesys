@@ -1,1 +1,1 @@
-authorizedGrantType
+authorized_grant_type
