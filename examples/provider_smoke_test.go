@@ -39,6 +39,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,10 +148,142 @@ func walkExamplesAndRun(t *testing.T, parent, tree string, broken brokenIndex, b
 			port, stop := spawnFakegenesys(t, bin)
 			defer stop()
 			url := fmt.Sprintf("http://%s:%d", defaultFakegenesysHost, port)
+			setupGenesysProviderEnv(t, url)
 			workDir := copyExample(t, dir, url)
 			run(t, workDir, tree, broken, bin, url)
 		})
 	}
+}
+
+// setupGenesysProviderEnv mirrors what infrafactory's
+// internal/cli/test_command.go::buildScenarioEnv does for cloud:genesys
+// scenarios. The genesyscloud Go SDK ignores GENESYSCLOUD_GATEWAY_* env
+// vars and hardcodes login.<region>.pure.cloud, so we route every
+// outbound HTTPS call through fakegenesys's TLS MITM CONNECT proxy
+// (default :8443 — mapped from the API port + 360 by convention) and
+// trust the boot-time CA via SSL_CERT_FILE.
+//
+// Without this S136 bridge the smoke test fails on every example with
+// "Auth Error: 400 - invalid_client" because the provider never reaches
+// fakegenesys's /oauth/token endpoint at all (the genesyscloud SDK
+// requires credentials in env even when HTTPS_PROXY routes the call
+// through our MITM). See docs/plans/fakegenesys-example-drift-fix-plan.md
+// (in infrafactory) § S136.
+//
+// All env vars set via t.Setenv so Go's test runner reverts them
+// automatically when the sub-test ends.
+func setupGenesysProviderEnv(t *testing.T, fakegenesysURL string) {
+	t.Helper()
+
+	// 1. Provider credentials. fakegenesys accepts any client_id /
+	//    client_secret per its CRITICAL[oauth-token-basic-auth] contract,
+	//    but the SDK still demands they be present in env.
+	t.Setenv("GENESYSCLOUD_OAUTHCLIENT_ID", "fake-client-id")
+	t.Setenv("GENESYSCLOUD_OAUTHCLIENT_SECRET", "fake-client-secret")
+	t.Setenv("GENESYSCLOUD_REGION", "us-east-1")
+
+	// 2. HTTPS_PROXY routes login.<region>.pure.cloud (and every other
+	//    api.<region>.pure.cloud call) through fakegenesys's MITM. The
+	//    MITM listens on (api_port + 360) by convention — :8083 -> :8443
+	//    on the default port. spawnFakegenesys boots both ports; here we
+	//    only need the proxy URL.
+	proxyURL, ok := derivedTLSProxyURL(fakegenesysURL)
+	if !ok {
+		t.Fatalf("setupGenesysProviderEnv: cannot derive TLS proxy URL from %q", fakegenesysURL)
+	}
+	t.Setenv("HTTPS_PROXY", proxyURL)
+	t.Setenv("HTTP_PROXY", proxyURL)
+
+	// 3. NO_PROXY: keep tofu's external network paths (registry, GitHub,
+	//    HashiCorp release CDN, etc.) off the MITM. Without this, tofu
+	//    init fails with "certificate signed by unknown authority"
+	//    because our MITM presents leaf certs signed by fakegenesys's
+	//    CA for registry.opentofu.org. Standard Go-net/http NO_PROXY
+	//    semantics: comma-separated, "*.foo.com" matches subdomains.
+	noProxy := strings.Join([]string{
+		"registry.opentofu.org",
+		"registry.terraform.io",
+		"releases.hashicorp.com",
+		"github.com",
+		"127.0.0.1",
+		"localhost",
+		".opentofu.org",
+		".terraform.io",
+		".hashicorp.com",
+		".amazonaws.com",
+		".githubusercontent.com",
+		".github.com",
+		".windows.net",
+	}, ",")
+	t.Setenv("NO_PROXY", noProxy)
+	t.Setenv("no_proxy", noProxy) // some clients consult lowercase
+
+	// 4. SSL_CERT_FILE: trust the boot-time CA so the provider's TLS
+	//    client accepts the MITM leaf certs. Go's TLS stack walks
+	//    SSL_CERT_FILE in addition to the system trust store — our CA
+	//    is added ON TOP of system roots so registry.opentofu.org etc.
+	//    still validate via the public trust store.
+	if certPath, ok := writeCACertToTempFile(t, fakegenesysURL); ok {
+		t.Setenv("SSL_CERT_FILE", certPath)
+	} else {
+		t.Logf("setupGenesysProviderEnv: failed to fetch CA from /mock/ca-cert; TLS verification will fail")
+	}
+}
+
+// derivedTLSProxyURL maps the fakegenesys API URL (e.g.
+// http://127.0.0.1:8083) to its TLS MITM proxy URL (http://127.0.0.1:8443).
+// Convention: tls_port = api_port + 360 when api_port is 8083; otherwise
+// fall back to :8443 (the binary's --tls-port default).
+func derivedTLSProxyURL(httpURL string) (string, bool) {
+	parsed, err := url.Parse(httpURL)
+	if err != nil || parsed.Host == "" {
+		return "", false
+	}
+	host := parsed.Hostname()
+	port := parsed.Port()
+	if port == "" {
+		return "", false
+	}
+	tlsPort := "8443"
+	if port != "8083" {
+		// Per-test fakegenesys binds a random API port but the TLS port
+		// stays at 8443 (single shared MITM port — only one per-test
+		// instance can hold it at a time; the smoke harness runs tests
+		// serially).
+		if envTLS := strings.TrimSpace(os.Getenv("FAKEGENESYS_TLS_PORT")); envTLS != "" {
+			tlsPort = envTLS
+		}
+	}
+	return "http://" + host + ":" + tlsPort, true
+}
+
+// writeCACertToTempFile fetches /mock/ca-cert from the per-test
+// fakegenesys, writes the PEM to a tempfile, and returns the path.
+// The tempfile lives in t.TempDir() so it's auto-cleaned.
+func writeCACertToTempFile(t *testing.T, fakegenesysURL string) (string, bool) {
+	t.Helper()
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Get(strings.TrimRight(fakegenesysURL, "/") + "/mock/ca-cert")
+	if err != nil {
+		t.Logf("writeCACertToTempFile: GET /mock/ca-cert: %v", err)
+		return "", false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Logf("writeCACertToTempFile: GET /mock/ca-cert: status %d", resp.StatusCode)
+		return "", false
+	}
+	pem, err := io.ReadAll(resp.Body)
+	if err != nil || len(pem) == 0 {
+		t.Logf("writeCACertToTempFile: read body: %v (len=%d)", err, len(pem))
+		return "", false
+	}
+	path := filepath.Join(t.TempDir(), "fakegenesys-ca.pem")
+	if err := os.WriteFile(path, pem, 0o600); err != nil {
+		t.Logf("writeCACertToTempFile: write %s: %v", path, err)
+		return "", false
+	}
+	return path, true
 }
 
 // ----- per-tree contracts -----
