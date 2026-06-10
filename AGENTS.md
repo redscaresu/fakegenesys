@@ -128,6 +128,35 @@ idempotency-only failures (apply + destroy still run, but
 entry requires a tracking ticket; removing one requires confirming
 the dir now passes idempotency clean.
 
+## Contract-coverage convention (canonical — fakegenesys is the reference impl)
+
+`handlers/contract_audit_test.go` enforces the `CRITICAL[<id>]:` /
+`MUST[<id>]:` docstring → `TestContract_<id>` test pairing across
+`handlers/*.go`. A wire-shape invariant the consuming
+`mypurecloud/genesyscloud` provider depends on must NOT live as a
+comment alone — drift becomes a failed `go test`, not a missed code
+review.
+
+The convention was born here in S123 (17 contracts paired with the
+post-S116/S122 mock-gap surface; see `docs/contract-matrix-s123.md`).
+S127 then rolled the same audit out across mockway/fakegcp/fakeaws
+as empty-state, and S128–S130 bridged each sibling's existing
+wire-shape invariants into the convention (27 paired contracts total
+across the family).
+
+Adding a new contract:
+
+1. Add `// CRITICAL[<kebab-case-id>]: <invariant + why it matters>`
+   above the handler (or `MUST[<id>]:` inside a code path).
+2. Add `func TestContract_<id_with_underscores>(t *testing.T)` to a
+   test file in this package. The test must assert the invariant
+   (revert the fix → test fails).
+3. Append a row to `docs/contract-matrix-s123.md`.
+
+The same file ships in mockway, fakegcp, and fakeaws with the same
+regex + paired-test logic. Cross-reference: `feedback_oss_mature_day_one.md`
+item 14 (infrafactory memory).
+
 ## Per-bundle PR rule
 
 When adding a new resource (S109+), the SAME PR must include:
