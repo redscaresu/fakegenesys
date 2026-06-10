@@ -50,6 +50,38 @@ against every example dir under `examples/{working,misconfigured,updates}/`.
 The provider IS the wire-format validator — no real Genesys tenant
 needed.
 
+## Testing examples
+
+The canonical entry point for end-to-end example coverage is
+`go test ./examples/...`:
+
+```bash
+# Run every example end-to-end (apply → plan-no-op → destroy)
+FAKEGENESYS_ENABLE_E2E=1 go test ./examples/...
+
+# Run one specific example, with verbose output
+FAKEGENESYS_ENABLE_E2E=1 go test ./examples/... -v -run TestProviderSmokeWorking/<dir>
+
+# Filter to a single sub-tree
+FAKEGENESYS_ENABLE_E2E=1 go test ./examples/... -run TestProviderSmokeMisconfigured
+```
+
+The harness builds the `fakegenesys` binary once, spawns a fresh
+instance on a random port per example (so dirs can't cross-contaminate
+state), and runs the per-tree contract:
+
+| Tree | Contract |
+|---|---|
+| `working/` | `tofu apply` → `tofu plan -detailed-exitcode` (no diff) → `tofu destroy` |
+| `misconfigured/` | `tofu apply` MUST fail; if `expected.txt` is present, output MUST contain that fragment |
+| `updates/` | apply `v1.tfvars` → no-op plan → apply `v2.tfvars` → no-op plan → destroy |
+
+The same in-test pattern is canonical across all four sibling fakes
+([mockway](https://github.com/redscaresu/mockway),
+[fakegcp](https://github.com/redscaresu/fakegcp),
+[fakeaws](https://github.com/redscaresu/fakeaws)) — `go test
+./examples/...` works identically in each.
+
 Wire format:
 
 | Property | Value |
