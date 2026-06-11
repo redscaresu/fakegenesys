@@ -31,6 +31,25 @@ make test
 make run    # serves the mock at :8083
 ```
 
+### Driving real terraform/tofu against the mock
+
+The repo ships `make demo-*` targets that wire up the env + drive a real
+`mypurecloud/genesyscloud` provider through a full lifecycle against
+fakegenesys. Useful for blog demos and manual exploration.
+
+```bash
+make build              # one-time
+make demo-apply         # boots fakegenesys + init + apply + plan-no-op (auth_role)
+make demo-apply EXAMPLE=routing_queue
+make demo-shell         # bash subshell with env set + cd'd to example
+make demo-help          # full target list + available examples
+make demo-down          # kill fakegenesys + clean temp files
+```
+
+The `plan -detailed-exitcode == 0` check at the end of `demo-apply` is the
+correctness oracle — drift in any wire-shape detail (case-sensitive JSON
+keys, exact status codes, default fields) surfaces here.
+
 Mint a token + hit the API:
 
 ```bash
