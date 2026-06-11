@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/redscaresu/fakegenesys/handlers"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func decodeJSON(resp *http.Response, into any) error {
@@ -26,9 +28,7 @@ func decodeJSON(resp *http.Response, into any) error {
 func newTestApp(t *testing.T) (*handlers.Application, *httptest.Server) {
 	t.Helper()
 	app, err := handlers.NewApplication(":memory:", false)
-	if err != nil {
-		t.Fatalf("NewApplication: %v", err)
-	}
+	require.NoError(t, err, "NewApplication")
 	srv := httptest.NewServer(app.Router())
 	t.Cleanup(func() {
 		srv.Close()
@@ -40,14 +40,10 @@ func newTestApp(t *testing.T) (*handlers.Application, *httptest.Server) {
 func postForm(t *testing.T, srv *httptest.Server, path, body string) *http.Response {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, srv.URL+path, strings.NewReader(body))
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
-	}
+	require.NoError(t, err, "NewRequest")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := srv.Client().Do(req)
-	if err != nil {
-		t.Fatalf("Do: %v", err)
-	}
+	require.NoError(t, err, "Do")
 	return resp
 }
 
@@ -57,26 +53,16 @@ func mintToken(t *testing.T, srv *httptest.Server) string {
 		"/oauth/token",
 		"grant_type=client_credentials&client_id=any&client_secret=any")
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("mint: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "mint")
 	var body struct {
 		AccessToken string `json:"access_token"`
 		TokenType   string `json:"token_type"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
-	if err := decodeJSON(resp, &body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if body.AccessToken == "" {
-		t.Fatalf("empty access_token")
-	}
-	if body.TokenType != "bearer" {
-		t.Fatalf("token_type = %q, want bearer", body.TokenType)
-	}
-	if body.ExpiresIn != 3600 {
-		t.Fatalf("expires_in = %d, want 3600", body.ExpiresIn)
-	}
+	require.NoError(t, decodeJSON(resp, &body), "decode")
+	require.NotEmpty(t, body.AccessToken, "empty access_token")
+	require.Equal(t, "bearer", body.TokenType, "token_type")
+	require.Equal(t, 3600, body.ExpiresIn, "expires_in")
 	return body.AccessToken
 }
 
@@ -91,9 +77,7 @@ func TestOAuthToken_RejectsUnsupportedGrantType(t *testing.T) {
 		"/oauth/token",
 		"grant_type=password&username=x&password=y")
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestOAuthToken_RejectsMissingClientFields(t *testing.T) {
@@ -102,9 +86,7 @@ func TestOAuthToken_RejectsMissingClientFields(t *testing.T) {
 		"/oauth/token",
 		"grant_type=client_credentials&client_id=&client_secret=")
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 // TestContract_oauth_token_basic_auth — RFC 6749 § 2.3.1. The Genesys
@@ -127,30 +109,18 @@ func TestContract_oauth_token_basic_auth(t *testing.T) {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			req.SetBasicAuth("client-via-basic", "secret-via-basic")
 			resp, err := srv.Client().Do(req)
-			if err != nil {
-				t.Fatalf("Do: %v", err)
-			}
+			require.NoError(t, err, "Do")
 			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("status = %d, want 200", resp.StatusCode)
-			}
+			require.Equal(t, http.StatusOK, resp.StatusCode)
 			var body struct {
 				AccessToken string `json:"access_token"`
 				TokenType   string `json:"token_type"`
 				ExpiresIn   int    `json:"expires_in"`
 			}
-			if err := decodeJSON(resp, &body); err != nil {
-				t.Fatalf("decode: %v", err)
-			}
-			if body.AccessToken == "" {
-				t.Fatalf("empty access_token")
-			}
-			if body.TokenType != "bearer" {
-				t.Fatalf("token_type = %q, want %q", body.TokenType, "bearer")
-			}
-			if body.ExpiresIn <= 0 {
-				t.Fatalf("expires_in = %d, want positive", body.ExpiresIn)
-			}
+			require.NoError(t, decodeJSON(resp, &body), "decode")
+			assert.NotEmpty(t, body.AccessToken, "empty access_token")
+			assert.Equal(t, "bearer", body.TokenType, "token_type")
+			assert.Positive(t, body.ExpiresIn, "expires_in")
 		})
 	}
 }
@@ -158,16 +128,12 @@ func TestContract_oauth_token_basic_auth(t *testing.T) {
 func TestBearerAuth_RejectsMissingHeader(t *testing.T) {
 	_, srv := newTestApp(t)
 	resp, err := srv.Client().Get(srv.URL + "/api/v2/users")
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
+	require.NoError(t, err, "Get")
 	defer resp.Body.Close()
 	// Without a resource handler registered yet, /api/v2/users returns
 	// 501. The bearerAuth middleware should reject FIRST with 401 — so
 	// 401 is the expected result in S108 (before S109 wires routes).
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
 func TestBearerAuth_RejectsInvalidToken(t *testing.T) {
@@ -175,31 +141,19 @@ func TestBearerAuth_RejectsInvalidToken(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v2/users", nil)
 	req.Header.Set("Authorization", "Bearer not-a-real-token")
 	resp, err := srv.Client().Do(req)
-	if err != nil {
-		t.Fatalf("Do: %v", err)
-	}
+	require.NoError(t, err, "Do")
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
 func TestMockReset_InvalidatesTokens(t *testing.T) {
 	app, srv := newTestApp(t)
 	tok := mintToken(t, srv)
-	if !app.Tokens().Valid(tok) {
-		t.Fatalf("expected token valid before reset")
-	}
+	require.True(t, app.Tokens().Valid(tok), "expected token valid before reset")
 	// Hit /mock/reset
 	resp, err := srv.Client().Post(srv.URL+"/mock/reset", "application/json", nil)
-	if err != nil {
-		t.Fatalf("Post reset: %v", err)
-	}
+	require.NoError(t, err, "Post reset")
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("reset status = %d, want 200", resp.StatusCode)
-	}
-	if app.Tokens().Valid(tok) {
-		t.Fatalf("expected token invalid after reset")
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "reset status")
+	assert.False(t, app.Tokens().Valid(tok), "expected token invalid after reset")
 }

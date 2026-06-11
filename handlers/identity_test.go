@@ -8,6 +8,7 @@ import (
 
 	"github.com/redscaresu/fakegenesys/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Helper: stand up a fakegenesys test server with bearer token wired.
@@ -25,47 +26,29 @@ func TestUser_Lifecycle(t *testing.T) {
 	resp := ts.PostJSON(t, "/api/v2/users",
 		map[string]any{"name": "Alice", "email": "alice@example.com"},
 		&created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id, _ := created["id"].(string)
-	if id == "" {
-		t.Fatalf("create: missing id")
-	}
+	require.NotEmpty(t, id, "create: missing id")
 
 	var got map[string]any
 	resp = ts.GetJSON(t, "/api/v2/users/"+id, &got)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("get: status %d", resp.StatusCode)
-	}
-	if got["email"] != "alice@example.com" {
-		t.Fatalf("email round-trip: %v", got["email"])
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "get")
+	assert.Equal(t, "alice@example.com", got["email"], "email round-trip")
 
 	var updated map[string]any
 	resp = ts.PatchJSON(t, "/api/v2/users/"+id,
 		map[string]any{"title": "Engineer"}, &updated)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("update: status %d", resp.StatusCode)
-	}
-	if updated["title"] != "Engineer" {
-		t.Fatalf("title not patched: %v", updated["title"])
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "update")
+	assert.Equal(t, "Engineer", updated["title"], "title not patched")
 
 	resp = ts.DeleteJSON(t, "/api/v2/users/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 
 	// Soft delete: subsequent GET returns 200 with state=deleted.
 	var after map[string]any
 	resp = ts.GetJSON(t, "/api/v2/users/"+id, &after)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("get-after-delete: status %d (want 200 for soft-delete)", resp.StatusCode)
-	}
-	if after["state"] != "deleted" {
-		t.Fatalf("state after delete: %v (want deleted)", after["state"])
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "get-after-delete (want 200 for soft-delete)")
+	assert.Equal(t, "deleted", after["state"], "state after delete")
 }
 
 func TestUser_DuplicateEmailConflict(t *testing.T) {
@@ -74,26 +57,20 @@ func TestUser_DuplicateEmailConflict(t *testing.T) {
 		map[string]any{"name": "A", "email": "dup@example.com"}, nil)
 	resp := ts.PostJSON(t, "/api/v2/users",
 		map[string]any{"name": "B", "email": "dup@example.com"}, nil)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("status = %d, want 409", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 }
 
 func TestUser_MissingRequiredFields_400(t *testing.T) {
 	ts := newIdentitySrv(t)
 	resp := ts.PostJSON(t, "/api/v2/users",
 		map[string]any{"name": "no-email"}, nil)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestUser_Get404(t *testing.T) {
 	ts := newIdentitySrv(t)
 	resp := ts.GetJSON(t, "/api/v2/users/does-not-exist", nil)
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
 func TestUser_ListPagination(t *testing.T) {
@@ -113,21 +90,11 @@ func TestUser_ListPagination(t *testing.T) {
 		Total      int              `json:"total"`
 	}
 	resp := ts.GetJSON(t, "/api/v2/users?pageNumber=1&pageSize=10", &listing)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
-	}
-	if listing.Total != 30 {
-		t.Fatalf("total = %d, want 30", listing.Total)
-	}
-	if listing.PageSize != 10 {
-		t.Fatalf("pageSize = %d, want 10", listing.PageSize)
-	}
-	if len(listing.Entities) != 10 {
-		t.Fatalf("entities = %d, want 10", len(listing.Entities))
-	}
-	if listing.PageCount != 3 {
-		t.Fatalf("pageCount = %d, want 3", listing.PageCount)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, 30, listing.Total)
+	assert.Equal(t, 10, listing.PageSize)
+	assert.Len(t, listing.Entities, 10)
+	assert.Equal(t, 3, listing.PageCount)
 }
 
 // --- groups ----------------------------------------------------------
@@ -138,25 +105,17 @@ func TestGroup_Lifecycle(t *testing.T) {
 	resp := ts.PostJSON(t, "/api/v2/groups",
 		map[string]any{"name": "Engineering", "type": "official"},
 		&created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id, _ := created["id"].(string)
 
 	resp = ts.PutJSON(t, "/api/v2/groups/"+id,
 		map[string]any{"description": "Eng group"}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("update: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "update")
 
 	resp = ts.DeleteJSON(t, "/api/v2/groups/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 	resp = ts.GetJSON(t, "/api/v2/groups/"+id, nil)
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("get-after-delete: status %d, want 404", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "get-after-delete")
 }
 
 // --- locations -------------------------------------------------------
@@ -166,20 +125,14 @@ func TestLocation_Lifecycle(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/locations",
 		map[string]any{"name": "HQ"}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id, _ := created["id"].(string)
 
 	resp = ts.PatchJSON(t, "/api/v2/locations/"+id,
 		map[string]any{"notes": "main office"}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("update: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "update")
 	resp = ts.DeleteJSON(t, "/api/v2/locations/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 }
 
 // --- auth roles ------------------------------------------------------
@@ -192,9 +145,7 @@ func TestAuthRole_Lifecycle(t *testing.T) {
 			"name":        "queue-supervisor",
 			"permissions": []any{"routing:queue:edit", "routing:queue:view"},
 		}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id, _ := created["id"].(string)
 
 	resp = ts.PutJSON(t, "/api/v2/authorization/roles/"+id,
@@ -202,14 +153,10 @@ func TestAuthRole_Lifecycle(t *testing.T) {
 			"name":        "queue-supervisor",
 			"permissions": []any{"routing:queue:edit"},
 		}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("update: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "update")
 
 	resp = ts.DeleteJSON(t, "/api/v2/authorization/roles/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 }
 
 func TestAuthRole_DuplicateNameConflict(t *testing.T) {
@@ -218,9 +165,7 @@ func TestAuthRole_DuplicateNameConflict(t *testing.T) {
 		map[string]any{"name": "dup", "permissions": []any{"a"}}, nil)
 	resp := ts.PostJSON(t, "/api/v2/authorization/roles",
 		map[string]any{"name": "dup", "permissions": []any{"a"}}, nil)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("status = %d, want 409", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 }
 
 // --- oauth clients ---------------------------------------------------
@@ -233,27 +178,20 @@ func TestOAuthClient_RevealOnceSecret(t *testing.T) {
 			"name":                "integration-bot",
 			"authorizedGrantType": "CLIENT_CREDENTIALS",
 		}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
-	if s, _ := created["secret"].(string); s == "" {
-		t.Fatalf("create response missing secret (reveal-once)")
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
+	secret, _ := created["secret"].(string)
+	assert.NotEmpty(t, secret, "create response missing secret (reveal-once)")
 	id, _ := created["id"].(string)
 
 	var fetched map[string]any
 	resp = ts.GetJSON(t, "/api/v2/oauth/clients/"+id, &fetched)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("get: status %d", resp.StatusCode)
-	}
-	if s, ok := fetched["secret"]; ok && s != nil {
-		t.Fatalf("get response leaked secret: %v (reveal-once violated)", s)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "get")
+	if s, ok := fetched["secret"]; ok {
+		assert.Nil(t, s, "get response leaked secret (reveal-once violated)")
 	}
 
 	resp = ts.DeleteJSON(t, "/api/v2/oauth/clients/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 }
 
 // --- helpers ---------------------------------------------------------
@@ -286,17 +224,13 @@ func TestContract_users_create_default_division(t *testing.T) {
 	resp := ts.PostJSON(t, "/api/v2/users",
 		map[string]any{"name": "Defaulted", "email": "defaulted@example.com"},
 		&created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	assertNonEmptyDivisionID(t, created, "create response")
 
 	id, _ := created["id"].(string)
 	var got map[string]any
 	resp = ts.GetJSON(t, "/api/v2/users/"+id, &got)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("read-after-create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "read-after-create")
 	assertNonEmptyDivisionID(t, got, "read-after-create response")
 }
 
@@ -337,20 +271,14 @@ func TestContract_users_search_results_key(t *testing.T) {
 			},
 		}),
 		http.Header{"Content-Type": []string{"application/json"}})
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("search: status %d; body: %s", resp.StatusCode, raw)
-	}
-	if !bytesContains(raw, `"results"`) {
-		t.Fatalf("search response missing literal 'results' key (provider reads Usersearchresponse.Results); body: %s", raw)
-	}
-	if bytesContains(raw, `"entities"`) {
-		t.Fatalf("search response uses 'entities' instead of 'results' (provider will return zero matches); body: %s", raw)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "search; body: %s", raw)
+	assert.True(t, bytesContains(raw, `"results"`),
+		"search response missing literal 'results' key (provider reads Usersearchresponse.Results); body: %s", raw)
+	assert.False(t, bytesContains(raw, `"entities"`),
+		"search response uses 'entities' instead of 'results' (provider will return zero matches); body: %s", raw)
 	// Also verify it decoded as expected.
 	for _, key := range []string{"results", "total", "pageCount", "pageNumber", "pageSize"} {
-		if !bytesContains(raw, `"`+key+`"`) {
-			t.Errorf("search response missing %q key", key)
-		}
+		assert.True(t, bytesContains(raw, `"`+key+`"`), "search response missing %q key", key)
 	}
 }
 
@@ -366,22 +294,14 @@ func TestContract_user_roles_get_version_and_roles(t *testing.T) {
 	ts := newIdentitySrv(t)
 	var body map[string]any
 	resp := ts.GetJSON(t, "/api/v2/users/any-user-id/roles", &body)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status %d", resp.StatusCode)
-	}
-	if _, ok := body["version"]; !ok {
-		t.Fatalf("response missing 'version' (provider reads Userauthorization.Version)")
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	_, hasVersion := body["version"]
+	require.True(t, hasVersion, "response missing 'version' (provider reads Userauthorization.Version)")
 	roles, present := body["roles"]
-	if !present {
-		t.Fatalf("response missing 'roles' (provider iterates Userauthorization.Roles)")
-	}
-	if roles == nil {
-		t.Fatalf("response 'roles' is JSON null — must be array (provider iterates)")
-	}
-	if _, ok := roles.([]any); !ok {
-		t.Fatalf("response 'roles' is not an array: %T", roles)
-	}
+	require.True(t, present, "response missing 'roles' (provider iterates Userauthorization.Roles)")
+	require.NotNil(t, roles, "response 'roles' is JSON null — must be array (provider iterates)")
+	_, isArr := roles.([]any)
+	assert.True(t, isArr, "response 'roles' is not an array: %T", roles)
 }
 
 // TestContract_user_roles_put_echoes_ids asserts PUT
@@ -395,26 +315,17 @@ func TestContract_user_roles_put_echoes_ids(t *testing.T) {
 	var body map[string]any
 	resp := ts.PutJSON(t, "/api/v2/users/u1/roles",
 		[]any{"role-a", "role-b"}, &body)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	roles, ok := body["roles"].([]any)
-	if !ok {
-		t.Fatalf("response 'roles' missing or not an array: %T", body["roles"])
-	}
-	if len(roles) != 2 {
-		t.Fatalf("roles length = %d, want 2", len(roles))
-	}
+	require.True(t, ok, "response 'roles' missing or not an array: %T", body["roles"])
+	require.Len(t, roles, 2, "roles length")
 	want := []string{"role-a", "role-b"}
 	for i, r := range roles {
 		entry, _ := r.(map[string]any)
 		id, _ := entry["id"].(string)
-		if id != want[i] {
-			t.Errorf("roles[%d].id = %q, want %q", i, id, want[i])
-		}
-		if uri, _ := entry["selfUri"].(string); uri == "" {
-			t.Errorf("roles[%d].selfUri is empty", i)
-		}
+		assert.Equal(t, want[i], id, "roles[%d].id", i)
+		uri, _ := entry["selfUri"].(string)
+		assert.NotEmpty(t, uri, "roles[%d].selfUri is empty", i)
 	}
 }
 
@@ -446,26 +357,18 @@ func TestContract_group_members_individuals_round_trip(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/groups",
 		map[string]any{"name": "Round-trip", "type": "official"}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create group: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create group")
 	gid, _ := created["id"].(string)
 
 	resp = ts.PostJSON(t, "/api/v2/groups/"+gid+"/members",
 		map[string]any{"memberIds": []any{"u1", "u2", "u3"}}, nil)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("members add: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusNoContent, resp.StatusCode, "members add")
 
 	var listing map[string]any
 	resp = ts.GetJSON(t, "/api/v2/groups/"+gid+"/individuals", &listing)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("individuals list: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "individuals list")
 	entities, _ := listing["entities"].([]any)
-	if len(entities) != 3 {
-		t.Fatalf("entities count after add = %d, want 3", len(entities))
-	}
+	require.Len(t, entities, 3, "entities count after add")
 	got := make(map[string]bool)
 	for _, e := range entities {
 		m, _ := e.(map[string]any)
@@ -474,29 +377,20 @@ func TestContract_group_members_individuals_round_trip(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"u1", "u2", "u3"} {
-		if !got[want] {
-			t.Errorf("individuals missing %q after add; got %v", want, got)
-		}
+		assert.True(t, got[want], "individuals missing %q after add; got %v", want, got)
 	}
 
 	// DELETE removes only u1, u2 — leaves u3.
 	resp = ts.DeleteJSON(t, "/api/v2/groups/"+gid+"/members?id=u1,u2")
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("members delete: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusNoContent, resp.StatusCode, "members delete")
 	var after map[string]any
 	resp = ts.GetJSON(t, "/api/v2/groups/"+gid+"/individuals", &after)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("individuals list after delete: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "individuals list after delete")
 	remaining, _ := after["entities"].([]any)
-	if len(remaining) != 1 {
-		t.Fatalf("entities after delete = %d, want 1", len(remaining))
-	}
+	require.Len(t, remaining, 1, "entities after delete")
 	last, _ := remaining[0].(map[string]any)
-	if id, _ := last["id"].(string); id != "u3" {
-		t.Errorf("remaining entity id = %q, want %q", id, "u3")
-	}
+	lastID, _ := last["id"].(string)
+	assert.Equal(t, "u3", lastID, "remaining entity id")
 }
 
 // TestContract_group_voicemail_dual_paths asserts both the legacy
@@ -515,22 +409,16 @@ func TestContract_group_voicemail_dual_paths(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			var body map[string]any
 			resp := ts.GetJSON(t, path, &body)
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("GET %s: status %d (must not 501)", path, resp.StatusCode)
-			}
-			if _, ok := body["alertTimeoutSeconds"]; !ok {
-				t.Errorf("GET %s: response missing alertTimeoutSeconds", path)
-			}
+			require.Equal(t, http.StatusOK, resp.StatusCode, "GET %s (must not 501)", path)
+			_, hasAlertTimeout := body["alertTimeoutSeconds"]
+			assert.True(t, hasAlertTimeout, "GET %s: response missing alertTimeoutSeconds", path)
 
 			var patched map[string]any
 			resp = ts.PatchJSON(t, path,
 				map[string]any{"alertTimeoutSeconds": 45}, &patched)
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("PATCH %s: status %d (must not 501)", path, resp.StatusCode)
-			}
-			if v, _ := patched["alertTimeoutSeconds"].(float64); int(v) != 45 {
-				t.Errorf("PATCH %s: alertTimeoutSeconds = %v, want 45", path, patched["alertTimeoutSeconds"])
-			}
+			require.Equal(t, http.StatusOK, resp.StatusCode, "PATCH %s (must not 501)", path)
+			v, _ := patched["alertTimeoutSeconds"].(float64)
+			assert.Equal(t, 45, int(v), "PATCH %s: alertTimeoutSeconds", path)
 		})
 	}
 }
@@ -540,21 +428,16 @@ func TestContract_group_voicemail_dual_paths(t *testing.T) {
 func assertNonEmptyDivisionID(t *testing.T, body map[string]any, label string) {
 	t.Helper()
 	div, ok := body["division"].(map[string]any)
-	if !ok || div == nil {
-		t.Fatalf("%s: missing 'division' object (provider derefs *Division.Id)", label)
-	}
+	require.True(t, ok, "%s: missing 'division' object (provider derefs *Division.Id)", label)
+	require.NotNil(t, div, "%s: missing 'division' object (provider derefs *Division.Id)", label)
 	id, _ := div["id"].(string)
-	if id == "" {
-		t.Fatalf("%s: division.id is empty (segfaults the SDK)", label)
-	}
+	require.NotEmpty(t, id, "%s: division.id is empty (segfaults the SDK)", label)
 }
 
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	raw, err := json.Marshal(v)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 	return raw
 }
 
