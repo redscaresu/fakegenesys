@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/redscaresu/fakegenesys/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- architect_datatable ---------------------------------------------
@@ -23,21 +25,15 @@ func TestDatatable_Lifecycle(t *testing.T) {
 				"type":    "object",
 			},
 		}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id := created["id"].(string)
 
 	resp = ts.PutJSON(t, "/api/v2/flows/datatables/"+id,
 		map[string]any{"name": "lookup-table", "description": "updated"}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("put: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "put")
 
 	resp = ts.DeleteJSON(t, "/api/v2/flows/datatables/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 }
 
 func TestDatatable_Rows_CRUDAndCascade(t *testing.T) {
@@ -50,32 +46,22 @@ func TestDatatable_Rows_CRUDAndCascade(t *testing.T) {
 	var row map[string]any
 	resp := ts.PostJSON(t, "/api/v2/flows/datatables/"+dtID+"/rows",
 		map[string]any{"key": "row1", "value": "a"}, &row)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("row create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "row create")
 	// duplicate key → 409
 	resp = ts.PostJSON(t, "/api/v2/flows/datatables/"+dtID+"/rows",
 		map[string]any{"key": "row1", "value": "b"}, nil)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("dup row: status %d, want 409", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusConflict, resp.StatusCode, "dup row")
 	// list
 	var listing struct {
 		Total int `json:"total"`
 	}
 	ts.GetJSON(t, "/api/v2/flows/datatables/"+dtID+"/rows", &listing)
-	if listing.Total != 1 {
-		t.Fatalf("list total = %d, want 1", listing.Total)
-	}
+	assert.Equal(t, 1, listing.Total, "list total")
 	// cascade delete: drop datatable, rows go away.
 	resp = ts.DeleteJSON(t, "/api/v2/flows/datatables/"+dtID)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("dt delete: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusNoContent, resp.StatusCode, "dt delete")
 	resp = ts.GetJSON(t, "/api/v2/flows/datatables/"+dtID+"/rows", nil)
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("rows on deleted dt: status %d, want 404", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "rows on deleted dt")
 }
 
 // --- architect_user_prompt -------------------------------------------
@@ -85,19 +71,13 @@ func TestUserPrompt_Lifecycle(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/architect/prompts",
 		map[string]any{"name": "welcome-prompt"}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id := created["id"].(string)
 	resp = ts.PutJSON(t, "/api/v2/architect/prompts/"+id,
 		map[string]any{"description": "Greet caller"}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("update: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "update")
 	resp = ts.DeleteJSON(t, "/api/v2/architect/prompts/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 }
 
 func TestUserPrompt_DuplicateName409(t *testing.T) {
@@ -106,9 +86,7 @@ func TestUserPrompt_DuplicateName409(t *testing.T) {
 		map[string]any{"name": "dup-prompt"}, nil)
 	resp := ts.PostJSON(t, "/api/v2/architect/prompts",
 		map[string]any{"name": "dup-prompt"}, nil)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("status = %d, want 409", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 }
 
 // --- flow ------------------------------------------------------------
@@ -118,84 +96,58 @@ func TestFlow_LifecycleAndStateMachine(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/flows",
 		map[string]any{"name": "main-ivr", "type": "inboundcall"}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id := created["id"].(string)
-	if created["state"] != "unpublished" {
-		t.Fatalf("initial state = %v, want unpublished", created["state"])
-	}
+	assert.Equal(t, "unpublished", created["state"], "initial state")
 
 	// checkout → locked
 	resp = ts.PostJSON(t, "/api/v2/flows/actions/checkout?flow="+id, nil, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("checkout: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "checkout")
 	var locked map[string]any
 	ts.GetJSON(t, "/api/v2/flows/"+id, &locked)
-	if locked["state"] != "locked" {
-		t.Fatalf("after checkout state = %v, want locked", locked["state"])
-	}
+	assert.Equal(t, "locked", locked["state"], "after checkout state")
 
 	// S112 finding #10a: checkin → unpublished + cleared lock.
 	resp = ts.PostJSON(t, "/api/v2/flows/actions/checkin?flow="+id, nil, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("checkin: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "checkin")
 	var checkedIn map[string]any
 	ts.GetJSON(t, "/api/v2/flows/"+id, &checkedIn)
-	if checkedIn["state"] != "unpublished" {
-		t.Fatalf("after checkin state = %v, want unpublished", checkedIn["state"])
-	}
-	if v, ok := checkedIn["lockedUser"]; ok && v != nil {
-		t.Fatalf("after checkin lockedUser should be nil, got %v", v)
+	assert.Equal(t, "unpublished", checkedIn["state"], "after checkin state")
+	if v, ok := checkedIn["lockedUser"]; ok {
+		assert.Nil(t, v, "after checkin lockedUser should be nil")
 	}
 
 	// Re-lock, then force-unlock.
 	ts.PostJSON(t, "/api/v2/flows/actions/checkout?flow="+id, nil, nil)
 	// S112 finding #10b: unlock from locked → unpublished + cleared lock.
 	resp = ts.PostJSON(t, "/api/v2/flows/actions/unlock?flow="+id, nil, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("unlock: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "unlock")
 	var unlocked map[string]any
 	ts.GetJSON(t, "/api/v2/flows/"+id, &unlocked)
-	if unlocked["state"] != "unpublished" {
-		t.Fatalf("after unlock state = %v, want unpublished", unlocked["state"])
-	}
+	assert.Equal(t, "unpublished", unlocked["state"], "after unlock state")
 
 	// publish → published + cleared lock
 	resp = ts.PostJSON(t, "/api/v2/flows/actions/publish?flow="+id, nil, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("publish: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "publish")
 	var published map[string]any
 	ts.GetJSON(t, "/api/v2/flows/"+id, &published)
-	if published["state"] != "published" {
-		t.Fatalf("after publish state = %v, want published", published["state"])
-	}
-	if v, ok := published["lockedUser"]; ok && v != nil {
-		t.Fatalf("after publish lockedUser should be nil, got %v", v)
+	assert.Equal(t, "published", published["state"], "after publish state")
+	if v, ok := published["lockedUser"]; ok {
+		assert.Nil(t, v, "after publish lockedUser should be nil")
 	}
 
 	// S112 finding #9: PUT must NOT bypass the state machine.
 	resp = ts.PutJSON(t, "/api/v2/flows/"+id,
 		map[string]any{"name": "main-ivr", "state": "unpublished"}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("put bypass attempt: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "put bypass attempt")
 	var afterBypass map[string]any
 	ts.GetJSON(t, "/api/v2/flows/"+id, &afterBypass)
-	if afterBypass["state"] != "published" {
-		t.Fatalf("PUT bypassed state machine: state = %v, want still published",
-			afterBypass["state"])
-	}
+	assert.Equal(t, "published", afterBypass["state"],
+		"PUT bypassed state machine: want still published")
 
 	// delete
 	resp = ts.DeleteJSON(t, "/api/v2/flows/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 }
 
 // S112 finding #11: empty multipart upload should 400.
@@ -215,13 +167,10 @@ func TestFlow_MultipartUploadEmpty400(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+ts.Token)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	resp, err := ts.HTTP.Client().Do(req)
-	if err != nil {
-		t.Fatalf("put empty multipart: %v", err)
-	}
+	require.NoError(t, err, "put empty multipart")
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 (multipart with no file part)", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode,
+		"multipart with no file part")
 }
 
 func TestFlow_MultipartUploadRoundTrip(t *testing.T) {
@@ -251,22 +200,15 @@ func TestFlow_MultipartUploadRoundTrip(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+ts.Token)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	resp, err := ts.HTTP.Client().Do(req)
-	if err != nil {
-		t.Fatalf("put multipart: %v", err)
-	}
+	require.NoError(t, err, "put multipart")
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("put multipart: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "put multipart")
 
 	var fetched map[string]any
 	ts.GetJSON(t, "/api/v2/flows/"+id, &fetched)
-	if fetched["multipartFilename"] != "flow.yaml" {
-		t.Fatalf("filename round-trip lost: %v", fetched["multipartFilename"])
-	}
-	if got, _ := fetched["multipartContent"].(string); got != yaml {
-		t.Fatalf("content round-trip lost; got %q", got)
-	}
+	assert.Equal(t, "flow.yaml", fetched["multipartFilename"], "filename round-trip")
+	got, _ := fetched["multipartContent"].(string)
+	assert.Equal(t, yaml, got, "content round-trip")
 }
 
 // --- responsemanagement_response -------------------------------------
@@ -276,19 +218,13 @@ func TestResponseManagement_Lifecycle(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/responsemanagement/responses",
 		map[string]any{"name": "canned-greeting"}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id := created["id"].(string)
 	resp = ts.PutJSON(t, "/api/v2/responsemanagement/responses/"+id,
 		map[string]any{"name": "canned-greeting", "texts": []any{}}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("update: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "update")
 	resp = ts.DeleteJSON(t, "/api/v2/responsemanagement/responses/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 }
 
 // --- idp_generic (singleton) -----------------------------------------
@@ -297,34 +233,24 @@ func TestIDPGeneric_Singleton(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 	// Initial GET → 404 (not configured).
 	resp := ts.GetJSON(t, "/api/v2/identityproviders/generic", nil)
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("initial get: status %d, want 404", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "initial get")
 	// PUT → 200.
 	put := map[string]any{
-		"name":     "Okta",
+		"name":      "Okta",
 		"issuerURI": "https://example.okta.com",
 	}
 	var updated map[string]any
 	resp = ts.PutJSON(t, "/api/v2/identityproviders/generic", put, &updated)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("put: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "put")
 	// GET after PUT → 200 with the config.
 	var fetched map[string]any
 	ts.GetJSON(t, "/api/v2/identityproviders/generic", &fetched)
-	if fetched["issuerURI"] != "https://example.okta.com" {
-		t.Fatalf("PUT lost: %v", fetched)
-	}
+	assert.Equal(t, "https://example.okta.com", fetched["issuerURI"], "PUT lost")
 	// DELETE → 204 + subsequent GET → 404.
 	resp = ts.DeleteJSON(t, "/api/v2/identityproviders/generic")
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 	resp = ts.GetJSON(t, "/api/v2/identityproviders/generic", nil)
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("after delete: status %d, want 404", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "after delete")
 }
 
 // --- S123 contract tests ---------------------------------------------
@@ -344,17 +270,13 @@ func TestContract_architect_datatable_create_default_division(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/flows/datatables",
 		map[string]any{"name": "defaulted-dt"}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	assertNonEmptyDivisionID(t, created, "create response")
 
 	id, _ := created["id"].(string)
 	var got map[string]any
 	resp = ts.GetJSON(t, "/api/v2/flows/datatables/"+id, &got)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("read-after-create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "read-after-create")
 	assertNonEmptyDivisionID(t, got, "read-after-create response")
 }
 
@@ -375,35 +297,25 @@ func TestContract_flow_jobs_upload_protocol(t *testing.T) {
 	// Step 1: create job.
 	var job map[string]any
 	resp := ts.PostJSON(t, "/api/v2/flows/jobs", map[string]any{}, &job)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("POST /flows/jobs: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "POST /flows/jobs")
 	jobID, _ := job["id"].(string)
-	if jobID == "" {
-		t.Fatalf("POST /flows/jobs: response missing id")
-	}
+	require.NotEmpty(t, jobID, "POST /flows/jobs: response missing id")
 	uploadURL, _ := job["presignedUrl"].(string)
-	if uploadURL == "" {
-		t.Fatalf("POST /flows/jobs: response missing presignedUrl")
-	}
+	require.NotEmpty(t, uploadURL, "POST /flows/jobs: response missing presignedUrl")
 	// presignedUrl MUST point at a NO_PROXY host (localhost / 127.0.0.1)
 	// or the upload loops back through the MITM proxy and fails.
-	if !bytes.Contains([]byte(uploadURL), []byte("localhost")) &&
-		!bytes.Contains([]byte(uploadURL), []byte("127.0.0.1")) {
-		t.Fatalf("presignedUrl %q must point at localhost or 127.0.0.1 (NO_PROXY host)", uploadURL)
-	}
+	hasLocalhost := bytes.Contains([]byte(uploadURL), []byte("localhost")) ||
+		bytes.Contains([]byte(uploadURL), []byte("127.0.0.1"))
+	require.True(t, hasLocalhost,
+		"presignedUrl %q must point at localhost or 127.0.0.1 (NO_PROXY host)", uploadURL)
 
 	// Step 2: upload.
 	req, err := http.NewRequest(http.MethodPut, uploadURL,
 		bytes.NewReader([]byte("inboundCall:\n  name: fake-flow\n")))
-	if err != nil {
-		t.Fatalf("upload NewRequest: %v", err)
-	}
+	require.NoError(t, err, "upload NewRequest")
 	req.Header.Set("Content-Type", "application/octet-stream")
 	upResp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("upload Do: %v", err)
-	}
+	require.NoError(t, err, "upload Do")
 	defer upResp.Body.Close()
 	if upResp.StatusCode < 200 || upResp.StatusCode >= 300 {
 		body, _ := io.ReadAll(upResp.Body)
@@ -413,19 +325,13 @@ func TestContract_flow_jobs_upload_protocol(t *testing.T) {
 	// Step 3: poll job.
 	var poll map[string]any
 	resp = ts.GetJSON(t, "/api/v2/flows/jobs/"+jobID, &poll)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /flows/jobs/{id}: status %d", resp.StatusCode)
-	}
-	if status, _ := poll["status"].(string); status != "Success" {
-		t.Fatalf("job status = %q, want %q (provider polls until Success)", status, "Success")
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "GET /flows/jobs/{id}")
+	status, _ := poll["status"].(string)
+	assert.Equal(t, "Success", status, "job status (provider polls until Success)")
 	flow, _ := poll["flow"].(map[string]any)
-	if flow == nil {
-		t.Fatalf("job poll missing 'flow' object")
-	}
-	if flowID, _ := flow["id"].(string); flowID == "" {
-		t.Fatalf("job poll: flow.id is empty (provider reads it into state)")
-	}
+	require.NotNil(t, flow, "job poll missing 'flow' object")
+	flowID, _ := flow["id"].(string)
+	assert.NotEmpty(t, flowID, "job poll: flow.id is empty (provider reads it into state)")
 }
 
 // TestContract_responsemanagement_library_crud_round_trip asserts the
@@ -444,26 +350,18 @@ func TestContract_responsemanagement_library_crud_round_trip(t *testing.T) {
 	// Real Genesys returns 200 (not 201) for library create; the
 	// provider's CreateContext gates on 2xx and reads body.id either way,
 	// but the contract is 200.
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		t.Fatalf("POST /libraries: status %d, want 2xx", resp.StatusCode)
-	}
+	require.Contains(t, []int{http.StatusOK, http.StatusCreated}, resp.StatusCode,
+		"POST /libraries: status %d, want 2xx", resp.StatusCode)
 	id, _ := created["id"].(string)
-	if id == "" {
-		t.Fatalf("POST /libraries: response missing id")
-	}
-	if name, _ := created["name"].(string); name != "lib1" {
-		t.Fatalf("POST /libraries: name round-trip got %q want %q", name, "lib1")
-	}
+	require.NotEmpty(t, id, "POST /libraries: response missing id")
+	name, _ := created["name"].(string)
+	assert.Equal(t, "lib1", name, "POST /libraries: name round-trip")
 
 	var got map[string]any
 	resp = ts.GetJSON(t, "/api/v2/responsemanagement/libraries/"+id, &got)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /libraries/{id}: status %d", resp.StatusCode)
-	}
-	if gotID, _ := got["id"].(string); gotID != id {
-		t.Errorf("GET id = %q, want %q", gotID, id)
-	}
-	if name, _ := got["name"].(string); name != "lib1" {
-		t.Errorf("GET name = %q, want %q", name, "lib1")
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "GET /libraries/{id}")
+	gotID, _ := got["id"].(string)
+	assert.Equal(t, id, gotID, "GET id")
+	gotName, _ := got["name"].(string)
+	assert.Equal(t, "lib1", gotName, "GET name")
 }

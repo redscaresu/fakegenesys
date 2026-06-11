@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/redscaresu/fakegenesys/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- routing_queue ---------------------------------------------------
@@ -17,28 +19,18 @@ func TestRoutingQueue_Lifecycle(t *testing.T) {
 	// S116c: queue create returns 200 (matches real Genesys + the
 	// genesyscloud provider's StatusOK check). Other routing resources
 	// still return 201.
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "create")
 	id, _ := created["id"].(string)
-	if id == "" {
-		t.Fatalf("create: missing id")
-	}
+	require.NotEmpty(t, id, "create: missing id")
 
 	resp = ts.PutJSON(t, "/api/v2/routing/queues/"+id,
 		map[string]any{"name": "Support", "description": "Tier-1 support queue"}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("update: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "update")
 
 	resp = ts.DeleteJSON(t, "/api/v2/routing/queues/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 	resp = ts.GetJSON(t, "/api/v2/routing/queues/"+id, nil)
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("get-after-delete: status %d, want 404", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "get-after-delete")
 }
 
 func TestRoutingQueue_DuplicateName409(t *testing.T) {
@@ -47,9 +39,7 @@ func TestRoutingQueue_DuplicateName409(t *testing.T) {
 		map[string]any{"name": "dup-queue"}, nil)
 	resp := ts.PostJSON(t, "/api/v2/routing/queues",
 		map[string]any{"name": "dup-queue"}, nil)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("status = %d, want 409", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 }
 
 func TestRoutingQueue_Members_IdempotentReplace(t *testing.T) {
@@ -73,21 +63,15 @@ func TestRoutingQueue_Members_IdempotentReplace(t *testing.T) {
 			{"id": u1ID, "ringNumber": 1},
 			{"id": u2ID, "ringNumber": 2},
 		}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("first replace: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "first replace")
 
 	var listing struct {
 		Entities []map[string]any `json:"entities"`
 		Total    int              `json:"total"`
 	}
 	resp = ts.GetJSON(t, "/api/v2/routing/queues/"+qID+"/members", &listing)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("list: status %d", resp.StatusCode)
-	}
-	if listing.Total != 2 {
-		t.Fatalf("after first replace: total = %d, want 2", listing.Total)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "list")
+	assert.Equal(t, 2, listing.Total, "after first replace")
 
 	// Second replace with {u2,u3} should drop u1 + add u3.
 	resp = ts.PatchJSON(t, "/api/v2/routing/queues/"+qID+"/members",
@@ -95,31 +79,21 @@ func TestRoutingQueue_Members_IdempotentReplace(t *testing.T) {
 			{"id": u2ID},
 			{"id": u3ID},
 		}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("second replace: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "second replace")
 	ts.GetJSON(t, "/api/v2/routing/queues/"+qID+"/members", &listing)
-	if listing.Total != 2 {
-		t.Fatalf("after second replace: total = %d, want 2", listing.Total)
-	}
+	assert.Equal(t, 2, listing.Total, "after second replace")
 	// Drop the queue; members cascade.
 	resp = ts.DeleteJSON(t, "/api/v2/routing/queues/"+qID)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("queue delete: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusNoContent, resp.StatusCode, "queue delete")
 	resp = ts.GetJSON(t, "/api/v2/routing/queues/"+qID+"/members", nil)
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("members on deleted queue: status %d, want 404", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "members on deleted queue")
 }
 
 func TestRoutingQueue_Members_OnMissingQueue404(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 	resp := ts.PatchJSON(t, "/api/v2/routing/queues/no-such-queue/members",
 		[]map[string]any{{"id": "irrelevant"}}, nil)
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
 // S112 finding #5: POST /members?delete=true removes the listed users.
@@ -140,19 +114,13 @@ func TestRoutingQueue_MembersAdd_DeleteFlag(t *testing.T) {
 		Total int `json:"total"`
 	}
 	ts.GetJSON(t, "/api/v2/routing/queues/"+qID+"/members", &listing)
-	if listing.Total != 1 {
-		t.Fatalf("after add: total = %d, want 1", listing.Total)
-	}
+	require.Equal(t, 1, listing.Total, "after add")
 
 	resp := ts.PostJSON(t, "/api/v2/routing/queues/"+qID+"/members?delete=true",
 		[]map[string]any{{"id": u1ID}}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("delete-flag POST: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "delete-flag POST")
 	ts.GetJSON(t, "/api/v2/routing/queues/"+qID+"/members", &listing)
-	if listing.Total != 0 {
-		t.Fatalf("after delete-flag: total = %d, want 0", listing.Total)
-	}
+	assert.Equal(t, 0, listing.Total, "after delete-flag")
 }
 
 // S112 finding #7: list users filters by ?state.
@@ -172,21 +140,15 @@ func TestUser_ListFiltersByState(t *testing.T) {
 
 	var def listing
 	ts.GetJSON(t, "/api/v2/users", &def)
-	if def.Total != 1 {
-		t.Fatalf("default state: total = %d, want 1", def.Total)
-	}
+	assert.Equal(t, 1, def.Total, "default state")
 
 	var del listing
 	ts.GetJSON(t, "/api/v2/users?state=deleted", &del)
-	if del.Total != 1 {
-		t.Fatalf("?state=deleted: total = %d, want 1", del.Total)
-	}
+	assert.Equal(t, 1, del.Total, "?state=deleted")
 
 	var anyState listing
 	ts.GetJSON(t, "/api/v2/users?state=any", &anyState)
-	if anyState.Total != 2 {
-		t.Fatalf("?state=any: total = %d, want 2", anyState.Total)
-	}
+	assert.Equal(t, 2, anyState.Total, "?state=any")
 }
 
 // --- routing_skill ---------------------------------------------------
@@ -196,19 +158,13 @@ func TestRoutingSkill_Lifecycle(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/routing/skills",
 		map[string]any{"name": "english-tier1"}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id := created["id"].(string)
 	resp = ts.PatchJSON(t, "/api/v2/routing/skills/"+id,
 		map[string]any{"description": "Tier 1"}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("update: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "update")
 	resp = ts.DeleteJSON(t, "/api/v2/routing/skills/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 }
 
 // --- routing_wrapupcode ----------------------------------------------
@@ -218,19 +174,13 @@ func TestRoutingWrapupcode_Lifecycle(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/routing/wrapupcodes",
 		map[string]any{"name": "resolved"}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id := created["id"].(string)
 	resp = ts.PutJSON(t, "/api/v2/routing/wrapupcodes/"+id,
 		map[string]any{"name": "resolved", "description": "Resolved by agent"}, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("update: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "update")
 	resp = ts.DeleteJSON(t, "/api/v2/routing/wrapupcodes/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 }
 
 // --- routing_language ------------------------------------------------
@@ -240,18 +190,12 @@ func TestRoutingLanguage_Lifecycle(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/routing/languages",
 		map[string]any{"name": "en-US"}, &created)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "create")
 	id := created["id"].(string)
 	resp = ts.GetJSON(t, "/api/v2/routing/languages/"+id, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("get: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "get")
 	resp = ts.DeleteJSON(t, "/api/v2/routing/languages/"+id)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 }
 
 // --- routing_utilization (singleton) ---------------------------------
@@ -261,42 +205,35 @@ func TestRoutingUtilization_Singleton(t *testing.T) {
 	// Initial GET returns default config (empty utilization map).
 	var initial map[string]any
 	resp := ts.GetJSON(t, "/api/v2/routing/utilization", &initial)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("initial get: status %d", resp.StatusCode)
-	}
-	if _, ok := initial["utilization"]; !ok {
-		t.Fatalf("initial get: missing utilization key: %v", initial)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "initial get")
+	_, hasUtil := initial["utilization"]
+	require.True(t, hasUtil, "initial get: missing utilization key: %v", initial)
 
 	// PUT replaces.
 	put := map[string]any{
 		"utilization": map[string]any{
-			"call":    map[string]any{"maximumCapacity": 1},
-			"email":   map[string]any{"maximumCapacity": 3},
+			"call":  map[string]any{"maximumCapacity": 1},
+			"email": map[string]any{"maximumCapacity": 3},
 		},
 	}
 	var updated map[string]any
 	resp = ts.PutJSON(t, "/api/v2/routing/utilization", put, &updated)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("put: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "put")
 
 	var after map[string]any
 	ts.GetJSON(t, "/api/v2/routing/utilization", &after)
 	u := after["utilization"].(map[string]any)
-	if _, ok := u["call"]; !ok {
-		t.Fatalf("PUT did not persist: %v", after)
-	}
+	_, hasCall := u["call"]
+	assert.True(t, hasCall, "PUT did not persist: %v", after)
 
 	// DELETE → back to default.
 	resp = ts.DeleteJSON(t, "/api/v2/routing/utilization")
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusNoContent, resp.StatusCode, "delete")
 	var reset map[string]any
 	ts.GetJSON(t, "/api/v2/routing/utilization", &reset)
-	if u, ok := reset["utilization"].(map[string]any); !ok || len(u) != 0 {
-		t.Fatalf("after delete: expected empty utilization map, got %v", reset)
+	resetU, ok := reset["utilization"].(map[string]any)
+	if assert.True(t, ok, "after delete: utilization not a map: %v", reset) {
+		assert.Empty(t, resetU, "after delete: expected empty utilization map")
 	}
 }
 
@@ -323,27 +260,17 @@ func TestContract_routing_queue_create_200_with_membercount(t *testing.T) {
 	var created map[string]any
 	resp := ts.PostJSON(t, "/api/v2/routing/queues",
 		map[string]any{"name": "contract-q-200"}, &created)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("POST /routing/queues: status = %d, want 200 (NOT 201 — provider gates on 200)", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode,
+		"POST /routing/queues (NOT 201 — provider gates on 200)")
 	id, _ := created["id"].(string)
-	if id == "" {
-		t.Fatalf("POST /routing/queues: response missing id")
-	}
+	require.NotEmpty(t, id, "POST /routing/queues: response missing id")
 
 	var got map[string]any
 	resp = ts.GetJSON(t, "/api/v2/routing/queues/"+id, &got)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /routing/queues/{id}: status %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "GET /routing/queues/{id}")
 	mc, present := got["memberCount"]
-	if !present {
-		t.Fatalf("GET response missing 'memberCount' — provider's flattenQueueMembers short-circuits on nil")
-	}
-	if mc == nil {
-		t.Fatalf("GET response 'memberCount' is JSON null — must be integer (provider short-circuits)")
-	}
-	if _, ok := mc.(float64); !ok {
-		t.Fatalf("GET response 'memberCount' is %T (%v), want number", mc, mc)
-	}
+	require.True(t, present, "GET response missing 'memberCount' — provider's flattenQueueMembers short-circuits on nil")
+	require.NotNil(t, mc, "GET response 'memberCount' is JSON null — must be integer (provider short-circuits)")
+	_, isNum := mc.(float64)
+	assert.True(t, isNum, "GET response 'memberCount' is %T (%v), want number", mc, mc)
 }

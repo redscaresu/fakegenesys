@@ -8,6 +8,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestAllContractsHaveTests is the durable, CI-enforced enforcement of
@@ -54,9 +57,7 @@ var (
 
 func TestAllContractsHaveTests(t *testing.T) {
 	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
+	require.NoError(t, err, "getwd")
 
 	sourceIDs, sourceLocs := scanContractIDs(t, dir)
 	testIDs, testLocs := scanTestContractFuncs(t, dir)
@@ -107,9 +108,7 @@ func scanContractIDs(t *testing.T, dir string) (map[string]struct{}, map[string]
 	locs := map[string][]string{}
 	for _, path := range files {
 		raw, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
+		require.NoError(t, err, "read %s", path)
 		base := filepath.Base(path)
 		for line, text := range strings.Split(string(raw), "\n") {
 			for _, m := range contractRe.FindAllStringSubmatch(text, -1) {
@@ -132,9 +131,7 @@ func scanTestContractFuncs(t *testing.T, dir string) (map[string]struct{}, map[s
 	locs := map[string][]string{}
 	for _, path := range files {
 		raw, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
+		require.NoError(t, err, "read %s", path)
 		base := filepath.Base(path)
 		for line, text := range strings.Split(string(raw), "\n") {
 			for _, m := range testRe.FindAllStringSubmatch(text, -1) {
@@ -157,9 +154,7 @@ func scanTestContractFuncs(t *testing.T, dir string) (map[string]struct{}, map[s
 func globGo(t *testing.T, dir, pattern string, excludeTest bool) []string {
 	t.Helper()
 	all, err := filepath.Glob(filepath.Join(dir, pattern))
-	if err != nil {
-		t.Fatalf("glob %q: %v", pattern, err)
-	}
+	require.NoError(t, err, "glob %q", pattern)
 	out := make([]string, 0, len(all))
 	for _, p := range all {
 		base := filepath.Base(p)
@@ -225,12 +220,8 @@ func TestContractAuditTest_Self(t *testing.T) {
 
 	src, _ := scanContractIDsAt(t, tmp)
 	tst, _ := scanTestContractFuncsAt(t, tmp)
-	if got, want := setDiff(src, tst), 0; len(got) != want {
-		t.Errorf("known-good: setDiff(src, tst) = %v, want empty", got)
-	}
-	if got, want := setDiff(tst, src), 0; len(got) != want {
-		t.Errorf("known-good: setDiff(tst, src) = %v, want empty", got)
-	}
+	assert.Empty(t, setDiff(src, tst), "known-good: setDiff(src, tst)")
+	assert.Empty(t, setDiff(tst, src), "known-good: setDiff(tst, src)")
 
 	// Known-bad-missing-test: CRITICAL[id] but no test.
 	tmp2 := t.TempDir()
@@ -238,9 +229,7 @@ func TestContractAuditTest_Self(t *testing.T) {
 		"package x\n// CRITICAL[orphan-doc]: invariant\nfunc handle() {}\n")
 	src2, _ := scanContractIDsAt(t, tmp2)
 	tst2, _ := scanTestContractFuncsAt(t, tmp2)
-	if diff := setDiff(src2, tst2); len(diff) != 1 {
-		t.Errorf("known-bad-missing-test: setDiff = %v, want exactly 1 missing", diff)
-	}
+	assert.Len(t, setDiff(src2, tst2), 1, "known-bad-missing-test: setDiff")
 
 	// Known-bad-orphan-test: TestContract_id but no docstring.
 	tmp3 := t.TempDir()
@@ -248,14 +237,10 @@ func TestContractAuditTest_Self(t *testing.T) {
 		"package x\nimport \"testing\"\nfunc TestContract_orphan_test(t *testing.T) {}\n")
 	src3, _ := scanContractIDsAt(t, tmp3)
 	tst3, _ := scanTestContractFuncsAt(t, tmp3)
-	if diff := setDiff(tst3, src3); len(diff) != 1 {
-		t.Errorf("known-bad-orphan-test: setDiff(tst, src) = %v, want exactly 1 orphan", diff)
-	}
+	assert.Len(t, setDiff(tst3, src3), 1, "known-bad-orphan-test: setDiff(tst, src)")
 
 	// Sanity: kebab/snake conversion is symmetric.
-	if got := snakeToKebab(kebabToSnake("a-b-c-d")); got != "a-b-c-d" {
-		t.Errorf("kebab/snake round-trip: %q", got)
-	}
+	assert.Equal(t, "a-b-c-d", snakeToKebab(kebabToSnake("a-b-c-d")), "kebab/snake round-trip")
 }
 
 // scanContractIDsAt / scanTestContractFuncsAt are dir-overrideable
@@ -273,7 +258,5 @@ func scanTestContractFuncsAt(t *testing.T, dir string) (map[string]struct{}, map
 
 func mustWrite(t *testing.T, path, contents string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-		t.Fatalf("write %s: %v", path, err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(contents), 0o644), "write %s", path)
 }

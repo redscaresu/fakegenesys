@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // S116c regression tests for the post-auth SDK probe endpoints.
@@ -23,14 +26,10 @@ import (
 func authedGet(t *testing.T, srvURL, path, tok string) *http.Response {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, srvURL+path, nil)
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
-	}
+	require.NoError(t, err, "NewRequest")
 	req.Header.Set("Authorization", "Bearer "+tok)
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("Do: %v", err)
-	}
+	require.NoError(t, err, "Do")
 	return resp
 }
 
@@ -39,17 +38,12 @@ func TestOrganizationsMe_BasicShape(t *testing.T) {
 	tok := mintToken(t, srv)
 	resp := authedGet(t, srv.URL, "/api/v2/organizations/me", tok)
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var body map[string]any
-	if err := decodeJSON(resp, &body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, decodeJSON(resp, &body), "decode")
 	for _, k := range []string{"id", "name", "thirdPartyOrgName", "defaultLanguage", "defaultCountryCode", "domain", "version", "state", "selfUri"} {
-		if _, ok := body[k]; !ok {
-			t.Errorf("response missing %q field", k)
-		}
+		_, ok := body[k]
+		assert.True(t, ok, "response missing %q field", k)
 	}
 }
 
@@ -67,28 +61,16 @@ func TestContract_authorization_products_total_int(t *testing.T) {
 	tok := mintToken(t, srv)
 	resp := authedGet(t, srv.URL, "/api/v2/authorization/products", tok)
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var body map[string]any
-	if err := decodeJSON(resp, &body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, decodeJSON(resp, &body), "decode")
 	total, ok := body["total"]
-	if !ok {
-		t.Fatalf("response missing 'total' (segfaults genesyscloud provider)")
-	}
+	require.True(t, ok, "response missing 'total' (segfaults genesyscloud provider)")
 	totalF, ok := total.(float64)
-	if !ok {
-		t.Fatalf("'total' = %v (%T), want numeric", total, total)
-	}
+	require.True(t, ok, "'total' = %v (%T), want numeric", total, total)
 	entities, ok := body["entities"].([]any)
-	if !ok {
-		t.Fatalf("'entities' missing or not an array: %v", body["entities"])
-	}
-	if int(totalF) != len(entities) {
-		t.Errorf("total=%d but len(entities)=%d (must match)", int(totalF), len(entities))
-	}
+	require.True(t, ok, "'entities' missing or not an array: %v", body["entities"])
+	assert.Equal(t, len(entities), int(totalF), "total vs len(entities) (must match)")
 }
 
 func TestAuthorizationDivisions_Home(t *testing.T) {
@@ -96,19 +78,13 @@ func TestAuthorizationDivisions_Home(t *testing.T) {
 	tok := mintToken(t, srv)
 	resp := authedGet(t, srv.URL, "/api/v2/authorization/divisions/home", tok)
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var body map[string]any
-	if err := decodeJSON(resp, &body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if v, _ := body["homeDivision"].(bool); !v {
-		t.Errorf("homeDivision = %v, want true", body["homeDivision"])
-	}
-	if _, ok := body["id"].(string); !ok {
-		t.Errorf("id missing or not a string")
-	}
+	require.NoError(t, decodeJSON(resp, &body), "decode")
+	v, _ := body["homeDivision"].(bool)
+	assert.True(t, v, "homeDivision = %v, want true", body["homeDivision"])
+	_, ok := body["id"].(string)
+	assert.True(t, ok, "id missing or not a string")
 }
 
 func TestTokensMe(t *testing.T) {
@@ -116,9 +92,7 @@ func TestTokensMe(t *testing.T) {
 	tok := mintToken(t, srv)
 	resp := authedGet(t, srv.URL, "/api/v2/tokens/me", tok)
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 // authedGetRaw is the byte-level cousin of authedGet — caller gets the
@@ -131,9 +105,7 @@ func authedGetRaw(t *testing.T, srvURL, path, tok string) (*http.Response, []byt
 	resp := authedGet(t, srvURL, path, tok)
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
+	require.NoError(t, err, "read body")
 	return resp, raw
 }
 
@@ -141,27 +113,19 @@ func authedPostJSONStatus(t *testing.T, srvURL, path, tok string, body any) (*ht
 	t.Helper()
 	var buf bytes.Buffer
 	if body != nil {
-		if err := json.NewEncoder(&buf).Encode(body); err != nil {
-			t.Fatalf("marshal body: %v", err)
-		}
+		require.NoError(t, json.NewEncoder(&buf).Encode(body), "marshal body")
 	}
 	req, err := http.NewRequest(http.MethodPost, srvURL+path, &buf)
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
-	}
+	require.NoError(t, err, "NewRequest")
 	req.Header.Set("Authorization", "Bearer "+tok)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("Do: %v", err)
-	}
+	require.NoError(t, err, "Do")
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
+	require.NoError(t, err, "read body")
 	return resp, raw
 }
 
@@ -183,33 +147,22 @@ func TestContract_tokens_me_oauthclient_pascal_case(t *testing.T) {
 	_, srv := newTestApp(t)
 	tok := mintToken(t, srv)
 	resp, raw := authedGetRaw(t, srv.URL, "/api/v2/tokens/me", tok)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, raw)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", raw)
 	// Raw-byte case-sensitive check first — Go's json.Unmarshal is
 	// case-insensitive and would mask the regression.
-	if !bytes.Contains(raw, []byte(`"OAuthClient"`)) {
-		t.Fatalf("response body missing literal PascalCase key \"OAuthClient\"; got: %s", raw)
-	}
-	if bytes.Contains(raw, []byte(`"oAuthClient"`)) {
-		t.Fatalf("response body contains camelCase \"oAuthClient\" key — SDK requires PascalCase; got: %s", raw)
-	}
+	require.True(t, bytes.Contains(raw, []byte(`"OAuthClient"`)),
+		"response body missing literal PascalCase key \"OAuthClient\"; got: %s", raw)
+	require.False(t, bytes.Contains(raw, []byte(`"oAuthClient"`)),
+		"response body contains camelCase \"oAuthClient\" key — SDK requires PascalCase; got: %s", raw)
 	var body map[string]any
-	if err := json.Unmarshal(raw, &body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(raw, &body), "decode")
 	oauthClient, ok := body["OAuthClient"].(map[string]any)
-	if !ok {
-		t.Fatalf("OAuthClient is not a JSON object: %T (%v)", body["OAuthClient"], body["OAuthClient"])
-	}
+	require.True(t, ok, "OAuthClient is not a JSON object: %T (%v)", body["OAuthClient"], body["OAuthClient"])
 	org, ok := oauthClient["organization"].(map[string]any)
-	if !ok {
-		t.Fatalf("OAuthClient.organization is not a JSON object: %T (%v)", oauthClient["organization"], oauthClient["organization"])
-	}
+	require.True(t, ok, "OAuthClient.organization is not a JSON object: %T (%v)", oauthClient["organization"], oauthClient["organization"])
 	id, _ := org["id"].(string)
-	if id != "purecloud-builtin" {
-		t.Fatalf("OAuthClient.organization.id = %q, want %q (literal value routes provider down safe role-assignment branch)", id, "purecloud-builtin")
-	}
+	assert.Equal(t, "purecloud-builtin", id,
+		"OAuthClient.organization.id (literal value routes provider down safe role-assignment branch)")
 }
 
 // TestContract_users_me_synthetic_tf_user asserts /users/me returns a
@@ -228,22 +181,16 @@ func TestContract_users_me_synthetic_tf_user(t *testing.T) {
 
 	first := authedGetJSON(t, srv.URL, "/api/v2/users/me", tok)
 	id, _ := first["id"].(string)
-	if id == "" {
-		t.Fatalf("users/me: missing id")
-	}
+	require.NotEmpty(t, id, "users/me: missing id")
 	div, _ := first["division"].(map[string]any)
-	if div == nil {
-		t.Fatalf("users/me: missing division (provider derefs *user.Division.Id)")
-	}
+	require.NotNil(t, div, "users/me: missing division (provider derefs *user.Division.Id)")
 	divID, _ := div["id"].(string)
-	if divID == "" {
-		t.Fatalf("users/me: division.id is empty (segfaults the SDK)")
-	}
+	require.NotEmpty(t, divID, "users/me: division.id is empty (segfaults the SDK)")
 
 	second := authedGetJSON(t, srv.URL, "/api/v2/users/me", tok)
-	if got, _ := second["id"].(string); got != id {
-		t.Fatalf("users/me id is not stable across calls: first=%q second=%q (terraform-user identity must persist)", id, got)
-	}
+	gotID, _ := second["id"].(string)
+	assert.Equal(t, id, gotID,
+		"users/me id is not stable across calls (terraform-user identity must persist)")
 }
 
 // TestContract_authorization_subject_grants_non_nil asserts the
@@ -259,24 +206,17 @@ func TestContract_authorization_subject_grants_non_nil(t *testing.T) {
 	_, srv := newTestApp(t)
 	tok := mintToken(t, srv)
 	body := authedGetJSON(t, srv.URL, "/api/v2/authorization/subjects/sub-xyz", tok)
-	if got, _ := body["id"].(string); got != "sub-xyz" {
-		t.Errorf("subject.id = %q, want %q", got, "sub-xyz")
-	}
-	if name, _ := body["name"].(string); name == "" {
-		t.Errorf("subject.name is empty")
-	}
+	got, _ := body["id"].(string)
+	assert.Equal(t, "sub-xyz", got, "subject.id")
+	name, _ := body["name"].(string)
+	assert.NotEmpty(t, name, "subject.name is empty")
 	// "grants" key MUST be present and decode to a slice (empty is fine;
 	// nil/missing is not — provider iterates the slice).
 	rawGrants, present := body["grants"]
-	if !present {
-		t.Fatalf("subject body missing 'grants' key (provider iterates it)")
-	}
-	if rawGrants == nil {
-		t.Fatalf("subject 'grants' is JSON null — must be an array (provider iterates)")
-	}
-	if _, ok := rawGrants.([]any); !ok {
-		t.Fatalf("subject 'grants' is not an array: %T (%v)", rawGrants, rawGrants)
-	}
+	require.True(t, present, "subject body missing 'grants' key (provider iterates it)")
+	require.NotNil(t, rawGrants, "subject 'grants' is JSON null — must be an array (provider iterates)")
+	_, ok := rawGrants.([]any)
+	assert.True(t, ok, "subject 'grants' is not an array: %T (%v)", rawGrants, rawGrants)
 }
 
 // TestContract_subjects_bulkadd_bulkremove_204 asserts both /bulkadd
@@ -305,11 +245,11 @@ func TestContract_subjects_bulkadd_bulkremove_204(t *testing.T) {
 		"/api/v2/authorization/subjects/sub1/bulkremove",
 	} {
 		resp, raw := authedPostJSONStatus(t, srv.URL, path, tok, grants)
-		if resp.StatusCode != http.StatusNoContent {
-			t.Fatalf("POST %s: status = %d, want 204; body: %s", path, resp.StatusCode, raw)
-		}
-		if len(raw) > 0 && strings.TrimSpace(string(raw)) != "" {
-			t.Errorf("POST %s: 204 must return empty body, got %q", path, raw)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode,
+			"POST %s; body: %s", path, raw)
+		if len(raw) > 0 {
+			assert.Empty(t, strings.TrimSpace(string(raw)),
+				"POST %s: 204 must return empty body, got %q", path, raw)
 		}
 	}
 }
@@ -321,12 +261,8 @@ func TestContract_subjects_bulkadd_bulkremove_204(t *testing.T) {
 func authedGetJSON(t *testing.T, srvURL, path, tok string) map[string]any {
 	t.Helper()
 	resp, raw := authedGetRaw(t, srvURL, path, tok)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET %s: status = %d; body: %s", path, resp.StatusCode, raw)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "GET %s; body: %s", path, raw)
 	var body map[string]any
-	if err := json.Unmarshal(raw, &body); err != nil {
-		t.Fatalf("decode: %v\nbody: %s", err, raw)
-	}
+	require.NoError(t, json.Unmarshal(raw, &body), "decode; body: %s", raw)
 	return body
 }
