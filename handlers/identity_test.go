@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/redscaresu/fakegenesys/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 // Helper: stand up a fakegenesys test server with bearer token wired.
@@ -428,12 +429,8 @@ func TestContract_user_password_204(t *testing.T) {
 	resp, raw := ts.DoRaw(t, http.MethodPost, "/api/v2/users/u1/password",
 		mustJSON(t, map[string]any{"newPassword": "x"}),
 		http.Header{"Content-Type": []string{"application/json"}})
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("status = %d, want 204; body: %s", resp.StatusCode, raw)
-	}
-	if len(raw) > 0 {
-		t.Errorf("204 response must be empty; got %q", raw)
-	}
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "body: %s", raw)
+	assert.Empty(t, raw, "204 response must have empty body")
 }
 
 // TestContract_group_members_individuals_round_trip asserts the
